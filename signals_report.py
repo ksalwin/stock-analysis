@@ -1,6 +1,18 @@
 #!/usr/bin/env python3
 """
-signals_report.py  –  analyse **one or many** Buy/Sell signal files, create text reports, and (optionally) draw equity curves and/or print statistics.
+signals_report.py  –  analyse **one or many** Buy/Sell signal files, create text summary reports, and (optionally) draw equity curves and/or print statistics.
+
+Generated parameters
+--------------------
+* **Number of positive / breakeven trades** – count of Buy‑Sell pairs where PnL ≥ 0
+* **Number of negative trades** – count of Buy‑Sell pairs where PnL < 0
+* **Total positive / breakeven PnL** – sum of all non‑negative trade results
+* **Total negative PnL** – sum of all negative trade results
+* **Difference (positive − |negative|)** – net PnL across all trades
+* **Win rate [%]** – (positive trades / total trades) × 100
+* **Average win / loss** – mean positive PnL divided by mean |negative| PnL (ratio > 1 is desirable)
+* **Profit factor** – Σ positive PnL ÷ |Σ negative PnL| (> 1 indicates profitability)
+* **Expectancy per trade** – net PnL ÷ total trades (average profit or loss each time a trade is executed)
 
 USAGE examples
 --------------
@@ -20,7 +32,6 @@ python signals_report.py out-wse_stocks/abc/abc-20-100-signals.txt out-wse_stock
 import argparse
 import csv
 import os
-import sys
 from datetime import datetime
 from typing import List, Tuple
 
@@ -50,6 +61,8 @@ def analyse(data: List[dict]) -> Tuple[List[datetime], List[float], List[str]]:
     pos_tot = neg_tot = 0.0
     pos_cnt = neg_cnt = 0
     equity = 0.0
+    pos_trades: List[float] = []
+    neg_trades: List[float] = []
 
     lines.append("Buy‑Sell pairs and differences")
     lines.append("-" * 60)
@@ -71,15 +84,27 @@ def analyse(data: List[dict]) -> Tuple[List[datetime], List[float], List[str]]:
             if pnl >= 0:
                 pos_tot += pnl
                 pos_cnt += 1
+                pos_trades.append(pnl)
             else:
                 neg_tot += pnl
                 neg_cnt += 1
+                neg_trades.append(pnl)
             i += 2
         else:
             i += 1
 
-    lines.append("-" * 60)
+    total_trades = pos_cnt + neg_cnt
     diff = pos_tot - abs(neg_tot)
+
+    # --- extra metrics
+    win_rate = (pos_cnt / total_trades * 100) if total_trades else 0.0
+    avg_win = sum(pos_trades) / pos_cnt if pos_cnt else 0.0
+    avg_loss = abs(sum(neg_trades) / neg_cnt) if neg_cnt else 0.0
+    avg_win_loss = (avg_win / avg_loss) if avg_loss else float("inf") if avg_win else 0.0
+    profit_factor = (pos_tot / abs(neg_tot)) if neg_tot else float("inf") if pos_tot else 0.0
+    expectancy = diff / total_trades if total_trades else 0.0
+
+    lines.append("-" * 60)
     lines.extend(
         [
             f"Number of positive / breakeven trades:     {pos_cnt}",
@@ -87,6 +112,10 @@ def analyse(data: List[dict]) -> Tuple[List[datetime], List[float], List[str]]:
             f"Total positive / breakeven PnL (≥0):       {pos_tot:.4f}",
             f"Total negative PnL (<0):                  {neg_tot:.4f}",
             f"Difference (positive – |negative|):        {diff:.4f}",
+            f"Win rate [%]:                              {win_rate:.2f}",
+            f"Average win / loss:                        {avg_win_loss:.4f}",
+            f"Profit factor:                             {profit_factor:.4f}",
+            f"Expectancy per trade:                      {expectancy:.4f}",
         ]
     )
 
@@ -110,7 +139,6 @@ def process_file(in_file: str, *, do_print: bool, do_plot: bool) -> None:
     data = read_signals(in_file)
     dates, equity_pts, report_lines = analyse(data)
 
-    # write report file next to input file
     root, ext = os.path.splitext(in_file)
     out_file = f"{root}-report{ext}"
     with open(out_file, "w") as f:
