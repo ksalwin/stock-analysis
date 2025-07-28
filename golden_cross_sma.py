@@ -3,42 +3,31 @@
 Golden‑Cross SMA Signal Generator (Batch‑Capable)
 ================================================
 Generate Buy/Sell signals using the Golden‑Cross strategy (short‑term SMA
-crossing long‑term SMA) for **one or more** OHLC data files.
+crossing long‑term SMA) for **one or more** OHLC data files, and print grouped
+results. Empty input files are *silently skipped*.
 
 Usage
 -----
-    python golden_cross_sma.py <SMA_short> <SMA_long> <files...> [--png] [-o OUTPUT_DIR]
+    python golden_cross_sma.py <SMA_short> <SMA_long> <files...> [options]
 
-Examples
-~~~~~~~~
-*Process two files, drop outputs under ./results/, and skip charts*
-    python golden_cross_sma.py 20 100 slv.txt gld.txt -o ./results
+Common options
+~~~~~~~~~~~~~~
+  -o, --output DIR       Root directory for results (default: .)
+  --png / --chart        Also save PNG chart for each file
+  --show-no-signal       Include tickers whose latest signal is "No signal*"
 
-*Same as above, but save PNG charts, too*
-    python golden_cross_sma.py 20 100 slv.txt gld.txt -o ./results --png
+Example
+~~~~~~~
+Process many files, store outputs in ./out, save charts, skip No‑Signal tickers
+by default:
 
-Arguments
-~~~~~~~~~
-Positional
-^^^^^^^^^^
-SMA_short      Integer – **must be smaller** than *SMA_long*.
-SMA_long       Integer – long moving‑average period.
-files          One or more input files; each must contain at minimum the
-               columns `<TICKER>, <DATE>, <CLOSE>` (header names can be wrapped
-               in angle brackets and in any case/whitespace).
-
-Optional
-^^^^^^^^
---png, --chart, --plot   Save a price/SMA chart (`.png`) for each file.
--o, --output OUTPUT_DIR  Root directory into which a sub‑folder named after the
-                         ticker (file stem) is created. Default is the current
-                         working directory.
+    python golden_cross_sma.py 20 100 data/*.txt -o ./out --png
 
 Outputs (per file, saved in `<OUTPUT_DIR>/<ticker>/`)
 ----------------------------------------------------
 1. `<base>-<short>-<long>.txt`             – full dataset with SMAs & signals
 2. `<base>-<short>-<long>-signals.txt`     – Date, Price, Signal (Buy/Sell)
-3. `<base>-<short>-<long>.png` *optional*  – chart (only when `--png` supplied)
+3. `<base>-<short>-<long>.png` *optional*  – chart (when `--png` supplied)
 
 `<base>` is the input filename without extension (e.g. `slv`).
 """
@@ -48,91 +37,77 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from typing import List
+from typing import List, Tuple, Optional
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Parsing & validation
+# Argument parsing
 # ──────────────────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Generate Golden‑Cross SMA Buy/Sell signals (batch‑mode)"
+    p = argparse.ArgumentParser(
+        description="Generate Golden‑Cross SMA Buy/Sell signals in batch mode "
+        "and print grouped results. Empty input files are silently skipped."
     )
-    parser.add_argument("sma_short", type=int, help="Short SMA period (integer)")
-    parser.add_argument("sma_long", type=int, help="Long SMA period (integer)")
-    parser.add_argument(
-        "files",
-        nargs="+",
-        help="One or more input data files (CSV/TXT)",
+    p.add_argument("sma_short", type=int, help="Short SMA period (integer)")
+    p.add_argument("sma_long", type=int, help="Long SMA period (integer)")
+    p.add_argument("files", nargs="+", help="One or more input data files")
+    p.add_argument(
+        "-o", "--output", default=".", help="Root output directory (default: current)"
     )
-    parser.add_argument(
-        "-o",
-        "--output",
-        default=".",
-        help="Root output directory (default: current directory)",
+    p.add_argument(
+        "--png", "--chart", "--plot", dest="make_png", action="store_true", help="Save PNG chart"
     )
-    parser.add_argument(
-        "--png",
-        "--chart",
-        "--plot",
-        dest="make_png",
+    p.add_argument(
+        "--show-no-signal",
+        dest="show_no",
         action="store_true",
-        help="Also save PNG chart per file",
+        help="Also print tickers whose latest signal is 'No signal …'",
     )
 
-    args = parser.parse_args()
-
+    args = p.parse_args()
     if args.sma_short >= args.sma_long:
-        parser.error("sma_short must be smaller than sma_long")
-
+        p.error("sma_short must be smaller than sma_long")
     return args
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Data loading & preprocessing
+# Data functions
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _sanitize_columns(df: pd.DataFrame) -> None:
+def _sanitize_cols(df: pd.DataFrame) -> None:
     df.columns = [str(c).strip().strip("<>").upper() for c in df.columns]
 
 
 def load_data(path: str) -> pd.DataFrame:
-    try:
-        df = pd.read_csv(path, header=0)
-    except Exception as exc:
-        raise ValueError(f"Could not parse file '{path}': {exc}") from exc
-
-    _sanitize_columns(df)
-
+    df = pd.read_csv(path, header=0)
+    _sanitize_cols(df)
     required = {"TICKER", "DATE", "CLOSE"}
     if not required.issubset(df.columns):
         raise ValueError(
             f"File '{path}' missing required columns; found {', '.join(df.columns)}"
         )
-
     df["DATE"] = pd.to_datetime(df["DATE"].astype(str), format="%Y%m%d")
     return df
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Core TA logic
+# TA logic
 # ──────────────────────────────────────────────────────────────────────────────
 
-def compute_sma(df: pd.DataFrame, short: int, long: int) -> None:
-    df[f"SMA_{short}"] = df["CLOSE"].rolling(window=short, min_periods=1).mean()
-    df[f"SMA_{long}"] = df["CLOSE"].rolling(window=long, min_periods=1).mean()
+def compute_sma(df: pd.DataFrame, s: int, l: int) -> None:
+    df[f"SMA_{s}"] = df["CLOSE"].rolling(window=s, min_periods=1).mean()
+    df[f"SMA_{l}"] = df["CLOSE"].rolling(window=l, min_periods=1).mean()
 
 
-def generate_signals(df: pd.DataFrame, short: int, long: int) -> None:
-    above = np.where(df[f"SMA_{short}"] > df[f"SMA_{long}"], 1, 0)
+def generate_signals(df: pd.DataFrame, s: int, l: int) -> None:
+    above = np.where(df[f"SMA_{s}"] > df[f"SMA_{l}"], 1, 0)
     change = np.diff(above, prepend=above[0])
-
-    signals: List[str] = []
     prev = "Sell"
+    signals: List[str] = []
     for c in change:
         if c == 1:
             cur = "Buy"
@@ -150,67 +125,55 @@ def generate_signals(df: pd.DataFrame, short: int, long: int) -> None:
 # Output helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def save_outputs(df: pd.DataFrame, out_dir: str, base: str, short: int, long: int) -> None:
+def save_outputs(df: pd.DataFrame, out_dir: str, base: str, s: int, l: int) -> None:
     os.makedirs(out_dir, exist_ok=True)
+    full_path = os.path.join(out_dir, f"{base}-{s}-{l}.txt")
+    sig_path = os.path.join(out_dir, f"{base}-{s}-{l}-signals.txt")
 
-    full_path = os.path.join(out_dir, f"{base}-{short}-{long}.txt")
-    sig_path = os.path.join(out_dir, f"{base}-{short}-{long}-signals.txt")
-
-    df[["TICKER", "DATE", f"SMA_{short}", f"SMA_{long}", "Signal"]].to_csv(
-        full_path, index=False
-    )
-
+    df[["TICKER", "DATE", f"SMA_{s}", f"SMA_{l}", "Signal"]].to_csv(full_path, index=False)
     df[df["Signal"].isin(["Buy", "Sell"])] [["DATE", "CLOSE", "Signal"]] \
         .rename(columns={"CLOSE": "Price"}).to_csv(sig_path, index=False)
 
 
-def plot_chart(
-    df: pd.DataFrame,
-    out_dir: str,
-    base: str,
-    short: int,
-    long: int,
-    make_png: bool,
-) -> None:
-    if not make_png:
+def plot_chart(df: pd.DataFrame, out_dir: str, base: str, s: int, l: int, png: bool) -> None:
+    if not png:
         return
-
     os.makedirs(out_dir, exist_ok=True)
-
     plt.figure(figsize=(14, 7))
     plt.plot(df["DATE"], df["CLOSE"], label="Close")
-    plt.plot(df["DATE"], df[f"SMA_{short}"], label=f"SMA {short}")
-    plt.plot(df["DATE"], df[f"SMA_{long}"], label=f"SMA {long}")
-
+    plt.plot(df["DATE"], df[f"SMA_{s}"], label=f"SMA {s}")
+    plt.plot(df["DATE"], df[f"SMA_{l}"], label=f"SMA {l}")
     buys = df[df["Signal"] == "Buy"]
     sells = df[df["Signal"] == "Sell"]
     plt.scatter(buys["DATE"], buys["CLOSE"], marker="^", s=120, label="Buy")
     plt.scatter(sells["DATE"], sells["CLOSE"], marker="v", s=120, label="Sell")
-
-    plt.title(f"{df['TICKER'].iloc[0]}: Golden‑Cross {short}/{long}")
+    plt.title(f"{df['TICKER'].iloc[0]}: Golden‑Cross {s}/{l}")
     plt.xlabel("Date")
     plt.ylabel("Price")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
-
-    plt.savefig(os.path.join(out_dir, f"{base}-{short}-{long}.png"))
+    plt.savefig(os.path.join(out_dir, f"{base}-{s}-{l}.png"))
     plt.close()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Main per‑file processing
+# Per‑file processing
 # ──────────────────────────────────────────────────────────────────────────────
 
-def process_file(path: str, args: argparse.Namespace) -> None:
+def process_file(path: str, args: argparse.Namespace) -> Optional[Tuple[str, str]]:
+    # Skip empty files without any message
+    if os.path.getsize(path) == 0:
+        return None
+
     base = os.path.splitext(os.path.basename(path))[0]
     out_dir = os.path.join(args.output, base)
 
     try:
         df = load_data(path)
-    except Exception as exc:
-        print(f"[ERROR] {path}: {exc}", file=sys.stderr)
-        return
+    except Exception:
+        # Skip unreadable or malformed files silently
+        return None
 
     compute_sma(df, args.sma_short, args.sma_long)
     generate_signals(df, args.sma_short, args.sma_long)
@@ -218,8 +181,9 @@ def process_file(path: str, args: argparse.Namespace) -> None:
     save_outputs(df, out_dir, base, args.sma_short, args.sma_long)
     plot_chart(df, out_dir, base, args.sma_short, args.sma_long, args.make_png)
 
-    # Print latest signal prefixed by ticker
-    print(f"{df['TICKER'].iloc[-1]} {df['Signal'].iloc[-1]}")
+    ticker = df["TICKER"].iloc[-1]
+    latest_sig = df["Signal"].iloc[-1]
+    return ticker, latest_sig
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -228,12 +192,33 @@ def process_file(path: str, args: argparse.Namespace) -> None:
 
 def main() -> None:
     args = parse_args()
-
-    # Ensure output root exists
     os.makedirs(args.output, exist_ok=True)
 
+    buys: List[str] = []
+    sells: List[str] = []
+    nos: List[str] = []
+
     for f in args.files:
-        process_file(f, args)
+        res = process_file(f, args)
+        if not res:
+            continue
+        ticker, sig = res
+        if sig == "Buy":
+            buys.append(ticker)
+        elif sig == "Sell":
+            sells.append(ticker)
+        else:
+            nos.append(ticker)
+
+    if buys:
+        print("Buy:")
+        print("  " + " ".join(buys))
+    if sells:
+        print("Sell:")
+        print("  " + " ".join(sells))
+    if args.show_no and nos:
+        print("No signal:")
+        print("  " + " ".join(nos))
 
 
 if __name__ == "__main__":
