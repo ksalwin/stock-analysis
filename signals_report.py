@@ -1,49 +1,46 @@
 #!/usr/bin/env python3
 """
-signals_report.py – analyse **one or many** Buy/Sell signal files and create text summary reports.
+signals_report.py – analyse **one or many** Buy/Sell signal files and create text summary reports, now with optional **parallel jobs**.
+
 (No plotting – the script only generates output files.)
 
 Generated parameters
 --------------------
-* **Number of positive / breakeven trades** – count of Buy‑Sell pairs where PnL ≥ 0
-* **Number of negative trades** – count of Buy‑Sell pairs where PnL < 0
+* **Number of positive / breakeven trades** – count of Buy‑Sell pairs where PnL ≥ 0
+* **Number of negative trades** – count of Buy‑Sell pairs where PnL < 0
 * **Total positive / breakeven PnL** – sum of all non‑negative trade results
 * **Total negative PnL** – sum of all negative trade results
 * **Difference (positive − |negative|)** – net PnL across all trades
-* **Win rate [%]** – (positive trades / total trades) × 100
-* **Average win / loss** – mean positive PnL divided by mean |negative| PnL (ratio > 1 is desirable)
-* **Profit factor** – Σ positive PnL ÷ |Σ negative PnL|
-
-    > 2.0   Very good: highly profitable and robust  
-    1.5–2.0 Strong  
-    1.1–1.5 Acceptable but could be improved  
-    ≈ 1.0   Breakeven: profit barely covers losses  
-    < 1.0   Losing strategy: losses exceed profits
-
+* **Win rate [%]** – (positive trades / total trades) × 100
+* **Average win / loss** – mean positive PnL divided by mean |negative| PnL (ratio > 1 desirable)
+* **Profit factor** – Σ positive PnL ÷ |Σ negative PnL|  
+  > 2.0 — Very good | 1.5–2.0 — Strong | 1.1–1.5 — OK | ≈1 — Breakeven | <1 — Losing
 * **Expectancy per trade** – net PnL ÷ total trades (average profit/loss each trade)
 
 USAGE examples
 --------------
-# Report only (summary, no pair list)
-python signals_report.py file‑signals.txt
+# Sequential (1 job) — summary only
+python signals_report.py out/*/*-signals.txt
 
-# Report with full Buy‑Sell pair list
-python signals_report.py file‑signals.txt --pairs
-
-# Batch mode with pairs and console output
-python signals_report.py dir/*/*-signals.txt --pairs --print
+# 8 concurrent jobs, with pairs & console print
+python signals_report.py out/*/*-signals.txt --jobs 8 --pairs --print
 """
 
 import argparse
 import csv
 import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
-from typing import List
+from pathlib import Path
+from typing import List, Tuple
 
+# ────────────────────────────────────────────────────────────────────────────────
+# Core analytics
+# ────────────────────────────────────────────────────────────────────────────────
 
-def read_signals(fname: str) -> List[dict]:
-    """Read the CSV‑like text file and return list of rows."""
-    with open(fname, newline="") as f:
+def read_signals(fname: Path) -> List[dict]:
+    """Read a CSV‑like text file into a list of dictionaries."""
+    with fname.open(newline="") as f:
         rdr = csv.DictReader(f)
         return [
             {
@@ -56,30 +53,26 @@ def read_signals(fname: str) -> List[dict]:
 
 
 def analyse(data: List[dict], include_pairs: bool) -> List[str]:
-    """Return a list of report lines (summary and optionally pair list)."""
+    """Return report lines (pair list optional)."""
     lines: List[str] = []
-
     pos_tot = neg_tot = 0.0
     pos_cnt = neg_cnt = 0
     pos_trades: List[float] = []
     neg_trades: List[float] = []
 
     if include_pairs:
-        lines.append("Buy‑Sell pairs and differences")
-        lines.append("-" * 60)
+        lines.extend(["Buy‑Sell pairs and differences", "-" * 60])
 
     i = 0
     while i < len(data) - 1:
         if data[i]["signal"] == "Buy" and data[i + 1]["signal"] == "Sell":
             buy, sell = data[i], data[i + 1]
             pnl = sell["price"] - buy["price"]
-
             if include_pairs:
                 lines.append(
                     f"{buy['date'].date()} @ {buy['price']:.4f} → "
                     f"{sell['date'].date()} @ {sell['price']:.4f} = {pnl:.4f}"
                 )
-
             if pnl >= 0:
                 pos_tot += pnl
                 pos_cnt += 1
@@ -118,38 +111,49 @@ def analyse(data: List[dict], include_pairs: bool) -> List[str]:
             f"Expectancy per trade:                      {expectancy:.4f}",
         ]
     )
-
     return lines
 
+# ────────────────────────────────────────────────────────────────────────────────
+# Worker function
+# ────────────────────────────────────────────────────────────────────────────────
 
-def process_file(in_file: str, *, include_pairs: bool, do_print: bool) -> None:
-    data = read_signals(in_file)
+def process_file(path: Path, include_pairs: bool) -> Tuple[Path, List[str]]:
+    data = read_signals(path)
     report_lines = analyse(data, include_pairs)
+    out_file = path.with_name(path.stem + "-report" + path.suffix)
+    out_file.write_text("\n".join(report_lines))
+    return path, report_lines
 
-    root, ext = os.path.splitext(in_file)
-    out_file = f"{root}-report{ext}"
-    with open(out_file, "w") as f:
-        f.write("\n".join(report_lines))
-
-    if do_print:
-        print(f"\n=== {in_file} ===")
-        print("\n".join(report_lines))
-
+# ────────────────────────────────────────────────────────────────────────────────
+# Main entry
+# ────────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Generate signal reports from one or many Buy/Sell files (no plotting).",
+        description="Generate signal reports in parallel (no plotting).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-
     parser.add_argument("input_files", nargs="+", help="paths to *-signals.txt files")
     parser.add_argument("--print", dest="do_print", action="store_true", help="print statistics to console")
-    parser.add_argument("--pairs", action="store_true", help="include Buy‑Sell pair list in the report")
+    parser.add_argument("--pairs", action="store_true", help="include Buy‑Sell pair list in report")
+    parser.add_argument("--jobs", type=int, default=1, help="number of parallel jobs/processes (default 1)")
 
     args = parser.parse_args()
+    paths = [Path(p) for p in args.input_files]
 
-    for path in args.input_files:
-        process_file(path, include_pairs=args.pairs, do_print=args.do_print)
+    if args.jobs == 1 or len(paths) == 1:
+        for p in paths:
+            path, lines = process_file(p, args.pairs)
+            if args.do_print:
+                print(f"\n=== {path} ===\n" + "\n".join(lines))
+    else:
+        max_workers = min(args.jobs, os.cpu_count() or 1)
+        with ProcessPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(process_file, p, args.pairs): p for p in paths}
+            for fut in as_completed(futures):
+                path, lines = fut.result()
+                if args.do_print:
+                    print(f"\n=== {path} ===\n" + "\n".join(lines))
 
 
 if __name__ == "__main__":
