@@ -4,23 +4,24 @@ run_signal_pipeline.py
 
 Pipeline:
 1. **golden_cross_sma.py** – batch‑processes all supplied ticker text files, producing
-   per‑ticker "*-signals.txt" files in a fixed `out/` directory.
-2. **signals_report.py** – batch‑reads every generated `*-signals.txt` file, creating
-   reports (details depend on that script).
+   per‑ticker "*-<low>-<high>-signals.txt" files inside a fixed `out/` directory
+   (each ticker gets its own sub‑directory).
+2. **signals_report.py** – is invoked **once per sub‑directory** inside `out/`,
+   receiving only the signal files that match the specific SMA pair used for this
+   run. This avoids command‑line length limits and ensures we don’t mix results
+   from other SMA pairs.
 
 Usage examples
 --------------
 ```
-python3 run_signal_pipeline.py gpw.txt pko.txt pkn.txt
-python3 run_signal_pipeline.py out-wse_stocks/slv.txt
+python3 run_signal_pipeline.py --sma-low 10 --sma-high 130 gpw.txt pko.txt
 ```
-You can pass dozens or hundreds of ticker files in one call.
 
-Design changes
---------------
-* **Output directory** is always `out` (created in the current working directory).
-* Positional argument is now one or more **ticker text files**, not a directory.
-* `--jobs` flag removed (both external scripts are single batch calls).
+Key assumptions
+---------------
+* Output directory is always `./out`.
+* Ticker files are plain text (.txt) with market data.
+* Both external scripts support the batch interfaces we agreed on.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ import argparse
 import sys
 from pathlib import Path
 import subprocess
-from typing import List
+from typing import List, Dict
 
 ###############################################################################
 # Helpers
@@ -55,32 +56,34 @@ def _run_cmd(cmd: List[str], label: str, dry: bool) -> int:
 ###############################################################################
 
 def main() -> int:
-    p = argparse.ArgumentParser(
-        description="Batch golden‑cross analysis followed by batched signal reporting.")
+    parser = argparse.ArgumentParser(
+        description="Batch golden‑cross analysis followed by per‑folder signal reporting.")
 
     # SMA settings
-    p.add_argument("--sma-low", type=int, default=20, help="Low SMA (default 20).")
-    p.add_argument("--sma-high", type=int, default=100, help="High SMA (default 100).")
+    parser.add_argument("--sma-low", type=int, default=20, help="Low SMA (default 20).")
+    parser.add_argument("--sma-high", type=int, default=100, help="High SMA (default 100).")
 
     # External scripts
     default_dir = Path(__file__).with_name
-    p.add_argument("--golden-script", type=Path,
-                   default=default_dir("golden_cross_sma.py"),
-                   help="Path to batch-enabled golden_cross_sma.py.")
-    p.add_argument("--signals-script", type=Path,
-                   default=default_dir("signals_report.py"),
-                   help="Path to batch-enabled signals_report.py.")
+    parser.add_argument("--golden-script", type=Path,
+                        default=default_dir("golden_cross_sma.py"),
+                        help="Path to batch‑enabled golden_cross_sma.py.")
+    parser.add_argument("--signals-script", type=Path,
+                        default=default_dir("signals_report.py"),
+                        help="Path to batch‑enabled signals_report.py.")
 
     # Misc
-    p.add_argument("--dry-run", action="store_true", help="Print commands only.")
+    parser.add_argument("--dry-run", action="store_true", help="Print commands only.")
 
     # Positional – one or more ticker files
-    p.add_argument("tickers", nargs="+", type=Path,
-                   help="Ticker text files (.txt) to process.")
+    parser.add_argument("tickers", nargs="+", type=Path,
+                        help="Ticker text files (.txt) to process.")
 
-    args = p.parse_args()
+    args = parser.parse_args()
 
-    # ---------------- Validation ------------------------------------------
+    # ---------------------------------------------------------------------
+    # Validation
+    # ---------------------------------------------------------------------
     if not args.golden_script.exists():
         print(f"Error: golden script not found: {args.golden_script}", file=sys.stderr)
         return 2
@@ -91,7 +94,7 @@ def main() -> int:
         print("Error: Invalid SMA values (positive, and low < high).", file=sys.stderr)
         return 2
 
-    # Validate ticker files
+    # Validate ticker files exist
     tickers: List[Path] = []
     for t in args.tickers:
         if not t.is_file():
@@ -102,14 +105,18 @@ def main() -> int:
         print("Error: No valid ticker files provided.", file=sys.stderr)
         return 2
 
-    # ---------------- Fixed output directory ------------------------------
+    # ---------------------------------------------------------------------
+    # Output directory
+    # ---------------------------------------------------------------------
     out_dir = Path.cwd() / "out"
     if args.dry_run:
         print(f"[DRY‑RUN] Would create output directory: {out_dir}")
     else:
         out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ---------------- golden_cross batch ----------------------------------
+    # ---------------------------------------------------------------------
+    # Run golden_cross_sma.py once for all tickers
+    # ---------------------------------------------------------------------
     golden_cmd: List[str] = [
         sys.executable,
         str(args.golden_script),
@@ -121,21 +128,34 @@ def main() -> int:
     ]
     gc_exit = _run_cmd(golden_cmd, "golden_cross_batch", args.dry_run)
 
-    # ---------------- Discover "*-signals.txt" ---------------------------
-    signal_files = sorted(out_dir.rglob("*-signals.txt"))
+    # ---------------------------------------------------------------------
+    # Discover signal files for THIS SMA pair only
+    # ---------------------------------------------------------------------
+    pattern = f"*-{args.sma_low}-{args.sma_high}-signals.txt"
+    signal_files = sorted(out_dir.rglob(pattern))
     if not signal_files:
-        print("Warning: No '*-signals.txt' files found in output directory.")
+        print(f"Warning: No '{pattern}' files found in output directory.")
         return gc_exit
 
-    # ---------------- signals_report batch --------------------------------
-    signals_cmd: List[str] = [
-        sys.executable,
-        str(args.signals_script),
-        *[str(sf) for sf in signal_files],
-    ]
-    rep_exit = _run_cmd(signals_cmd, "signals_report_batch", args.dry_run)
+    # Group by immediate parent folder
+    grouped: Dict[Path, List[Path]] = {}
+    for sf in signal_files:
+        grouped.setdefault(sf.parent, []).append(sf)
 
-    return max(gc_exit, rep_exit)
+    # ---------------------------------------------------------------------
+    # Call signals_report.py once per sub‑directory
+    # ---------------------------------------------------------------------
+    rep_exit_codes: List[int] = []
+    for folder, files in grouped.items():
+        label = f"signals_report_{folder.name}"
+        cmd: List[str] = [
+            sys.executable,
+            str(args.signals_script),
+            *[str(f) for f in files],
+        ]
+        rep_exit_codes.append(_run_cmd(cmd, label, args.dry_run))
+
+    return max([gc_exit] + rep_exit_codes)
 
 ###############################################################################
 # Entrypoint
