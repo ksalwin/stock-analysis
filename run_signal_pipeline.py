@@ -137,25 +137,15 @@ def main() -> int:
         print(f"Warning: No '{pattern}' files found in output directory.")
         return gc_exit
 
-    # Group by immediate parent folder
-    grouped: Dict[Path, List[Path]] = {}
-    for sf in signal_files:
-        grouped.setdefault(sf.parent, []).append(sf)
+    # ---------------- signals_report batch --------------------------------
+    signals_cmd: List[str] = [
+        sys.executable,
+        str(args.signals_script),
+        *[str(sf) for sf in signal_files],
+    ]
+    rep_exit = _run_cmd(signals_cmd, "signals_report_batch", args.dry_run)
 
-    # ---------------------------------------------------------------------
-    # Call signals_report.py once per sub‑directory
-    # ---------------------------------------------------------------------
-    rep_exit_codes: List[int] = []
-    for folder, files in grouped.items():
-        label = f"signals_report_{folder.name}"
-        cmd: List[str] = [
-            sys.executable,
-            str(args.signals_script),
-            *[str(f) for f in files],
-        ]
-        rep_exit_codes.append(_run_cmd(cmd, label, args.dry_run))
-
-    return max([gc_exit] + rep_exit_codes)
+    return max(gc_exit, rep_exit)
 
 ###############################################################################
 # Entrypoint
