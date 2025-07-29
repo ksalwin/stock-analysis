@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """generate_summary.py
 
-Batch‑combine golden‑cross signal **report files** into concise, sortable TXT summaries.
+Batch‑combine golden‑cross signal **report files** into concise TXT summaries.
 
-Each *input* is an individual back‑test report whose filename matches the pattern::
+Every *input* must be a file whose name matches::
 
     <ticker>-<sma_low>-<sma_high>-signals-report.txt
 
-Example: ``slv-40-160-signals-report.txt``
+The script always writes one combined table::
 
-The script groups all files by ``ticker`` and writes either
+    <ticker>-summary.txt
 
-* ``<ticker>-summary.txt``   – one combined table (default), or
-* ``<ticker>-<metric>.txt``  – one file per metric when ``--separate-files`` is set
+and, when you add ``--separate-files``, it **also** produces one file per metric::
 
-into the same directory as the **first** source file for that ticker.  Filenames are **always
-lowercase** (e.g. ``slv-summary.txt``).
+    <ticker>-summary-<metric>.txt
+
+in the same directory as the first file for that ticker.  All filenames are lowercase.
 
 -------------------------------------------------------------------------------
 Usage
@@ -24,15 +24,13 @@ Usage
 
     python generate_summary.py <file> [<file> ...] [options]
 
-You may supply dozens of files at once – that *is* batch mode.
-
 Options
 ~~~~~~~
-* ``--sort-by METRIC``    Metric column to sort rows by (default ``expectancy_per_trade``).
-* ``--separate-files``    Emit one TXT per metric instead of a single summary.
+* ``--sort-by METRIC``    Metric to order the combined summary (default ``expectancy_per_trade``).
+* ``--separate-files``    Additionally emit one TXT per metric, each sorted by that metric’s value.
 
 -------------------------------------------------------------------------------
-Metric mapping (raw header → snake_case column)
+Metric mapping (raw header → snake_case column)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 * Number of positive / breakeven trades → ``positive_trades``
 * Number of negative trades              → ``negative_trades``
@@ -99,7 +97,7 @@ class Record:
         sma_low = int(m.group("sma_low"))
         sma_high = int(m.group("sma_high"))
 
-        values: Dict[str, float | int] = {}
+        vals: Dict[str, float | int] = {}
         with path.open() as fh:
             for line in fh:
                 if ":" not in line:
@@ -109,91 +107,91 @@ class Record:
                     continue
                 key = RAW_TO_COL[raw_key]
                 if key.endswith("_trades"):
-                    values[key] = int(raw_val)
+                    vals[key] = int(raw_val)
                 else:
                     raw_val = raw_val.replace(",", ".")
                     try:
-                        values[key] = float(raw_val)
+                        vals[key] = float(raw_val)
                     except ValueError:
-                        values[key] = None
-        return Record(ticker, sma_low, sma_high, **values)
+                        vals[key] = None
+        return Record(ticker, sma_low, sma_high, **vals)
 
 # ---------------- Helpers -----------------------------------------------------
 
-def _pretty(path: Path) -> str:
+def _pretty(p: Path) -> str:
     try:
-        return str(path.relative_to(Path.cwd()))
+        return str(p.relative_to(Path.cwd()))
     except ValueError:
-        return str(path)
+        return str(p)
 
 
 def group_by_ticker(files: Iterable[Path]) -> dict[str, list[Path]]:
-    groups: dict[str, list[Path]] = defaultdict(list)
+    grp: dict[str, list[Path]] = defaultdict(list)
     for f in files:
         m = FILE_RE.match(f.name)
-        if not m:
-            print(f"Warning: {f.name} skipped – name doesn’t match pattern", file=sys.stderr)
-            continue
-        ticker = m.group("ticker").lower()
-        groups[ticker].append(f)
-    return groups
+        if m:
+            grp[m.group("ticker").lower()].append(f)
+        else:
+            print(f"Warning: {f} skipped (filename pattern mismatch)", file=sys.stderr)
+    return grp
 
 
-def _sort_key(sort_by: str):
+def _numeric_desc(col: str):
+    return lambda r: -(getattr(r, col) or float("-inf"))
+
+
+def _combined_sort(sort_by: str):
     if sort_by not in COL_ORDER:
         return lambda r: (r.sma_low, r.sma_high)
-    return lambda r: (
-        -(getattr(r, sort_by) or float("inf")) if isinstance(getattr(r, sort_by), (int, float)) else getattr(r, sort_by)
-    )
+    if sort_by in {"sma_low", "sma_high"}:
+        return lambda r: (r.sma_low, r.sma_high)
+    return _numeric_desc(sort_by)
 
 # ---------------- Writers -----------------------------------------------------
 
-def write_summary(records: list[Record], sort_by: str, out_dir: Path):
-    rows = sorted(records, key=_sort_key(sort_by))
-    out_file = (out_dir / f"{records[0].ticker}-summary.txt").resolve()
-    out_file.parent.mkdir(parents=True, exist_ok=True)
-    with out_file.open("w", newline="") as fp:
+def write_combined(records: list[Record], sort_by: str, out_dir: Path):
+    rows = sorted(records, key=_combined_sort(sort_by))
+    out_f = (out_dir / f"{records[0].ticker}-summary.txt").resolve()
+    out_f.parent.mkdir(parents=True, exist_ok=True)
+    with out_f.open("w", newline="") as fp:
         writer = csv.DictWriter(fp, fieldnames=COL_ORDER)
         writer.writeheader()
         for r in rows:
             writer.writerow({c: getattr(r, c) for c in COL_ORDER})
-    print(f"Written {_pretty(out_file)}")
+    print(f"Written {_pretty(out_f)}")
 
 
-def write_per_metric(records: list[Record], sort_by: str, out_dir: Path):
+def write_metric_files(records: list[Record], out_dir: Path):
     for col in RAW_TO_COL.values():
-        rows = sorted(records, key=_sort_key(sort_by if col == sort_by else "sma_low"))
-        out_file = (out_dir / f"{records[0].ticker}-{col}.txt").resolve()
-        out_file.parent.mkdir(parents=True, exist_ok=True)
-        with out_file.open("w", newline="") as fp:
+        rows = sorted(records, key=_numeric_desc(col))
+        out_f = (out_dir / f"{records[0].ticker}-summary-{col}.txt").resolve()
+        with out_f.open("w", newline="") as fp:
             writer = csv.DictWriter(fp, fieldnames=["sma_low", "sma_high", col])
             writer.writeheader()
             for r in rows:
                 writer.writerow({"sma_low": r.sma_low, "sma_high": r.sma_high, col: getattr(r, col)})
-        print(f"Written {_pretty(out_file)}")
+        print(f"Written {_pretty(out_f)}")
 
-# ---------------- Main --------------------------------------------------------
+# ---------------- CLI ---------------------------------------------------------
 
 def main(argv: Sequence[str] | None = None):
-    parser = argparse.ArgumentParser(description="Combine golden‑cross report files into summaries.")
-    parser.add_argument("files", nargs="+", help="Input report files to process.")
-    parser.add_argument("--sort-by", default="expectancy_per_trade", help="Metric column to sort by.")
-    parser.add_argument("--separate-files", action="store_true", help="Produce one TXT per metric instead of a combined file.")
-    args = parser.parse_args(argv)
+    pa = argparse.ArgumentParser(description="Combine golden‑cross report files into summaries.")
+    pa.add_argument("files", nargs="+", help="Input report files (batch mode)")
+    pa.add_argument("--sort-by", default="expectancy_per_trade", help="Metric to sort the combined summary by")
+    pa.add_argument("--separate-files", action="store_true", help="Also emit <ticker>-summary-<metric>.txt files")
+    args = pa.parse_args(argv)
 
-    file_paths = [Path(f) for f in args.files]
-    # Validate files exist
-    for p in file_paths:
+    paths = [Path(p) for p in args.files]
+    for p in paths:
         if not p.is_file():
-            parser.error(f"File not found: {p}")
+            pa.error(f"File not found: {p}")
 
-    for ticker, paths in group_by_ticker(file_paths).items():
-        out_dir = paths[0].parent.resolve()
-        records = [Record.parse_file(p) for p in paths]
+    for ticker, flist in group_by_ticker(paths).items():
+        out_dir = flist[0].parent.resolve()
+        recs = [Record.parse_file(f) for f in flist]
+        write_combined(recs, args.sort_by, out_dir)
         if args.separate_files:
-            write_per_metric(records, args.sort_by, out_dir)
-        else:
-            write_summary(records, args.sort_by, out_dir)
+            write_metric_files(recs, out_dir)
 
 
 if __name__ == "__main__":
