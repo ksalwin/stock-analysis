@@ -183,11 +183,9 @@ def main() -> None:
             nos.append(ticker)
 
     if buys:
-        print("Buy:")
-        print("  " + " ".join(buys))
+        print("Buy: " + " ".join(buys))
     if sells:
-        print("Sell:")
-        print("  " + " ".join(sells))
+        print("Sell: " + " ".join(sells))
     if args.show_no and nos:
         print("No signal:")
         print("  " + " ".join(nos))
