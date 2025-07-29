@@ -3,31 +3,36 @@
 
 Batch‑combine golden‑cross signal **report files** into concise TXT summaries.
 
-Every *input* must be a file whose name matches::
+Each *input* must be a file named
 
     <ticker>-<sma_low>-<sma_high>-signals-report.txt
 
-The script always writes one combined table::
+The script **always** writes a combined table
 
     <ticker>-summary.txt
 
-and, when you add ``--separate-files``, it **also** produces one file per metric::
+and, when you pass ``--separate-files``, it **also** writes one file per metric:
 
     <ticker>-summary-<metric>.txt
 
-in the same directory as the first file for that ticker.  All filenames are lowercase.
+All output files live beside the first source file for that ticker and use
+lower‑case filenames.
 
 -------------------------------------------------------------------------------
 Usage
 -----
 ::
 
-    python generate_summary.py <file> [<file> ...] [options]
+    python generate_summary.py [options] <file> [<file> ...]
+
+Options appear first; then list one or many report files (batch mode).
 
 Options
 ~~~~~~~
-* ``--sort-by METRIC``    Metric to order the combined summary (default ``expectancy_per_trade``).
-* ``--separate-files``    Additionally emit one TXT per metric, each sorted by that metric’s value.
+* ``--sort-by METRIC``    Metric used to sort the **combined** summary (default
+  ``expectancy_per_trade``).
+* ``--separate-files``    Additionally emit one TXT per metric, each sorted by
+  that metric’s value.
 
 -------------------------------------------------------------------------------
 Metric mapping (raw header → snake_case column)
@@ -126,14 +131,14 @@ def _pretty(p: Path) -> str:
 
 
 def group_by_ticker(files: Iterable[Path]) -> dict[str, list[Path]]:
-    grp: dict[str, list[Path]] = defaultdict(list)
+    groups: dict[str, list[Path]] = defaultdict(list)
     for f in files:
         m = FILE_RE.match(f.name)
         if m:
-            grp[m.group("ticker").lower()].append(f)
+            groups[m.group("ticker").lower()].append(f)
         else:
             print(f"Warning: {f} skipped (filename pattern mismatch)", file=sys.stderr)
-    return grp
+    return groups
 
 
 def _numeric_desc(col: str):
@@ -141,9 +146,7 @@ def _numeric_desc(col: str):
 
 
 def _combined_sort(sort_by: str):
-    if sort_by not in COL_ORDER:
-        return lambda r: (r.sma_low, r.sma_high)
-    if sort_by in {"sma_low", "sma_high"}:
+    if sort_by not in COL_ORDER or sort_by in {"sma_low", "sma_high"}:
         return lambda r: (r.sma_low, r.sma_high)
     return _numeric_desc(sort_by)
 
@@ -176,9 +179,11 @@ def write_metric_files(records: list[Record], out_dir: Path):
 
 def main(argv: Sequence[str] | None = None):
     pa = argparse.ArgumentParser(description="Combine golden‑cross report files into summaries.")
-    pa.add_argument("files", nargs="+", help="Input report files (batch mode)")
+    # Optional flags first so usage shows [options] before files
     pa.add_argument("--sort-by", default="expectancy_per_trade", help="Metric to sort the combined summary by")
     pa.add_argument("--separate-files", action="store_true", help="Also emit <ticker>-summary-<metric>.txt files")
+    # Positional files argument last
+    pa.add_argument("files", nargs="+", help="Input report files (batch mode)")
     args = pa.parse_args(argv)
 
     paths = [Path(p) for p in args.files]
