@@ -4,8 +4,8 @@ Golden‑Cross SMA Signal Generator (Batch‑Capable, Text‑Only)
 ===========================================================
 Generate Buy/Sell signals using the Golden‑Cross strategy (short‑term SMA
 crossing long‑term SMA) for **one or more** OHLC data files and write the
-results as CSV files.  The script no longer produces PNG charts—it focuses
-exclusively on data processing.
+results as **plain‑text CSV files with a `.txt` extension**. No charts are
+produced.
 
 Usage
 -----
@@ -14,18 +14,18 @@ Usage
 Options
 ~~~~~~~
   -o, --output DIR       Root directory for results (default: .)
-  --show-no-signal       Also print tickers whose latest signal is "No signal*"
+  --show-no-signal       Also print tickers whose latest signal is "No signal…"
 
 Example
 ~~~~~~~
-Process many files, store outputs in ./out, skip "No signal" tickers:
+Process many files and store outputs in ./out (skipping "No signal" tickers):
 
     python golden_cross_sma.py 20 100 data/*.txt -o ./out
 
 Outputs (per file, saved in `<OUTPUT_DIR>/<ticker>/`)
 ----------------------------------------------------
-1. `<base>-<short>-<long>.csv`             – full dataset with SMAs & signals
-2. `<base>-<short>-<long>-signals.csv`     – Date, Price, Signal (Buy/Sell)
+1. `<base>-<short>-<long>.txt`             – full dataset with SMAs & signals
+2. `<base>-<short>-<long>-signals.txt`     – Date, Price, Signal (Buy/Sell)
 
 `<base>` is the input filename without extension (e.g. `SLV`).
 """
@@ -121,8 +121,8 @@ def generate_signals(df: pd.DataFrame, short: int, long: int) -> None:
 def save_outputs(df: pd.DataFrame, out_dir: str, base: str, s: int, l: int) -> None:
     os.makedirs(out_dir, exist_ok=True)
 
-    full_path = os.path.join(out_dir, f"{base}-{s}-{l}.csv")
-    sig_path = os.path.join(out_dir, f"{base}-{s}-{l}-signals.csv")
+    full_path = os.path.join(out_dir, f"{base}-{s}-{l}.txt")
+    sig_path = os.path.join(out_dir, f"{base}-{s}-{l}-signals.txt")
 
     df[["TICKER", "DATE", f"SMA_{s}", f"SMA_{l}", "Signal"]].to_csv(full_path, index=False)
 
