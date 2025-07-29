@@ -58,10 +58,6 @@ def main() -> int:
     p = argparse.ArgumentParser(
         description="Batch golden‑cross analysis followed by batched signal reporting.")
 
-    # Positional – one or more ticker files
-    p.add_argument("tickers", nargs="+", type=Path,
-                   help="Ticker text files (.txt) to process.")
-
     # SMA settings
     p.add_argument("--sma-low", type=int, default=20, help="Low SMA (default 20).")
     p.add_argument("--sma-high", type=int, default=100, help="High SMA (default 100).")
@@ -77,6 +73,10 @@ def main() -> int:
 
     # Misc
     p.add_argument("--dry-run", action="store_true", help="Print commands only.")
+
+    # Positional – one or more ticker files
+    p.add_argument("tickers", nargs="+", type=Path,
+                   help="Ticker text files (.txt) to process.")
 
     args = p.parse_args()
 
