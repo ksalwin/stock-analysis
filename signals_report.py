@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-signals_report.py – analyse **one or many** Buy/Sell signal files, create text summary reports, and (optionally) draw equity curves or print statistics.
+signals_report.py – analyse **one or many** Buy/Sell signal files and create text summary reports.
+(No plotting – the script only generates output files.)
 
 Generated parameters
 --------------------
@@ -29,17 +30,15 @@ python signals_report.py file‑signals.txt
 # Report with full Buy‑Sell pair list
 python signals_report.py file‑signals.txt --pairs
 
-# Batch mode with pairs, chart & console output
-python signals_report.py dir/*/*-signals.txt --pairs --plot --print
+# Batch mode with pairs and console output
+python signals_report.py dir/*/*-signals.txt --pairs --print
 """
 
 import argparse
 import csv
 import os
 from datetime import datetime
-from typing import List, Tuple
-
-import matplotlib.pyplot as plt
+from typing import List
 
 
 def read_signals(fname: str) -> List[dict]:
@@ -56,15 +55,12 @@ def read_signals(fname: str) -> List[dict]:
         ]
 
 
-def analyse(data: List[dict], include_pairs: bool) -> Tuple[List[datetime], List[float], List[str]]:
-    """Produce equity curve points and formatted report lines."""
+def analyse(data: List[dict], include_pairs: bool) -> List[str]:
+    """Return a list of report lines (summary and optionally pair list)."""
     lines: List[str] = []
-    dates: List[datetime] = []
-    equity_pts: List[float] = []
 
     pos_tot = neg_tot = 0.0
     pos_cnt = neg_cnt = 0
-    equity = 0.0
     pos_trades: List[float] = []
     neg_trades: List[float] = []
 
@@ -77,9 +73,6 @@ def analyse(data: List[dict], include_pairs: bool) -> Tuple[List[datetime], List
         if data[i]["signal"] == "Buy" and data[i + 1]["signal"] == "Sell":
             buy, sell = data[i], data[i + 1]
             pnl = sell["price"] - buy["price"]
-            equity += pnl
-            dates.append(sell["date"])
-            equity_pts.append(equity)
 
             if include_pairs:
                 lines.append(
@@ -102,7 +95,6 @@ def analyse(data: List[dict], include_pairs: bool) -> Tuple[List[datetime], List
     total_trades = pos_cnt + neg_cnt
     diff = pos_tot - abs(neg_tot)
 
-    # extra metrics
     win_rate = (pos_cnt / total_trades * 100) if total_trades else 0.0
     avg_win = sum(pos_trades) / pos_cnt if pos_cnt else 0.0
     avg_loss = abs(sum(neg_trades) / neg_cnt) if neg_cnt else 0.0
@@ -113,7 +105,6 @@ def analyse(data: List[dict], include_pairs: bool) -> Tuple[List[datetime], List
     if include_pairs:
         lines.append("-" * 60)
 
-    # summary block
     lines.extend(
         [
             f"Number of positive / breakeven trades:     {pos_cnt}",
@@ -128,23 +119,12 @@ def analyse(data: List[dict], include_pairs: bool) -> Tuple[List[datetime], List
         ]
     )
 
-    return dates, equity_pts, lines
+    return lines
 
 
-def plot_equity(dates: List[datetime], equity_pts: List[float], title: str) -> None:
-    plt.figure(figsize=(10, 5))
-    plt.plot(dates, equity_pts, marker="o")
-    plt.title(title)
-    plt.xlabel("Date")
-    plt.ylabel("Cumulative PnL")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-
-def process_file(in_file: str, *, include_pairs: bool, do_print: bool, do_plot: bool) -> None:
+def process_file(in_file: str, *, include_pairs: bool, do_print: bool) -> None:
     data = read_signals(in_file)
-    dates, equity_pts, report_lines = analyse(data, include_pairs)
+    report_lines = analyse(data, include_pairs)
 
     root, ext = os.path.splitext(in_file)
     out_file = f"{root}-report{ext}"
@@ -155,25 +135,21 @@ def process_file(in_file: str, *, include_pairs: bool, do_print: bool, do_plot: 
         print(f"\n=== {in_file} ===")
         print("\n".join(report_lines))
 
-    if do_plot:
-        plot_equity(dates, equity_pts, title=os.path.basename(in_file))
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Generate signal reports from one or many Buy/Sell files.",
+        description="Generate signal reports from one or many Buy/Sell files (no plotting).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     parser.add_argument("input_files", nargs="+", help="paths to *-signals.txt files")
-    parser.add_argument("--plot", action="store_true", help="draw equity curve for each file")
     parser.add_argument("--print", dest="do_print", action="store_true", help="print statistics to console")
     parser.add_argument("--pairs", action="store_true", help="include Buy‑Sell pair list in the report")
 
     args = parser.parse_args()
 
     for path in args.input_files:
-        process_file(path, include_pairs=args.pairs, do_print=args.do_print, do_plot=args.plot)
+        process_file(path, include_pairs=args.pairs, do_print=args.do_print)
 
 
 if __name__ == "__main__":
