@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
 """
-Batch‑run golden_cross_sma.py for all tickers and then batch‑run
-signals_report.py for all "*-signals.txt" files.
+run_signal_pipeline.py
 
-Key points
-----------
-* **golden_cross_sma.py** (batch‑enabled) is called **once** with *all* input
-  ticker files plus `-o <out_dir>`.
-* **signals_report.py** (batch‑enabled) is called **once** with *all* discovered
-  `-signals.txt` files.
-* Output directory is created as `out-<input_dir>` next to the source dir.
-* `--jobs` is kept for CLI stability but ignored (both stages are single‑call).
+Pipeline:
+1. **golden_cross_sma.py** – batch‑processes all supplied ticker text files, producing
+   per‑ticker "*-signals.txt" files in a fixed `out/` directory.
+2. **signals_report.py** – batch‑reads every generated `*-signals.txt` file, creating
+   reports (details depend on that script).
+
+Usage examples
+--------------
+```
+python3 run_signal_pipeline.py gpw.txt pko.txt pkn.txt
+python3 run_signal_pipeline.py out-wse_stocks/slv.txt
+```
+You can pass dozens or hundreds of ticker files in one call.
+
+Design changes
+--------------
+* **Output directory** is always `out` (created in the current working directory).
+* Positional argument is now one or more **ticker text files**, not a directory.
+* `--jobs` flag removed (both external scripts are single batch calls).
 """
 
 from __future__ import annotations
@@ -46,37 +56,31 @@ def _run_cmd(cmd: List[str], label: str, dry: bool) -> int:
 
 def main() -> int:
     p = argparse.ArgumentParser(
-        description="Run batch golden-cross analysis and generate batched signal reports.")
+        description="Batch golden‑cross analysis followed by batched signal reporting.")
 
-    p.add_argument("dir", type=Path, help="Directory containing ticker text files.")
+    # Positional – one or more ticker files
+    p.add_argument("tickers", nargs="+", type=Path,
+                   help="Ticker text files (.txt) to process.")
 
     # SMA settings
     p.add_argument("--sma-low", type=int, default=20, help="Low SMA (default 20).")
     p.add_argument("--sma-high", type=int, default=100, help="High SMA (default 100).")
 
-    # File filtering
-    p.add_argument("--ext", default=".txt", help="Ticker file extension (default .txt).")
-
     # External scripts
     default_dir = Path(__file__).with_name
     p.add_argument("--golden-script", type=Path,
                    default=default_dir("golden_cross_sma.py"),
-                   help="Path to batch‑enabled golden_cross_sma.py.")
+                   help="Path to batch-enabled golden_cross_sma.py.")
     p.add_argument("--signals-script", type=Path,
                    default=default_dir("signals_report.py"),
-                   help="Path to batch‑enabled signals_report.py.")
+                   help="Path to batch-enabled signals_report.py.")
 
-    # Misc options
-    p.add_argument("--out-prefix", default="out-", help="Prefix for output dir (default out-)")
-    p.add_argument("--jobs", type=int, default=1, help="Ignored, kept for backward compatibility.")
+    # Misc
     p.add_argument("--dry-run", action="store_true", help="Print commands only.")
 
     args = p.parse_args()
 
     # ---------------- Validation ------------------------------------------
-    if not args.dir.is_dir():
-        print(f"Error: {args.dir} is not a directory", file=sys.stderr)
-        return 2
     if not args.golden_script.exists():
         print(f"Error: golden script not found: {args.golden_script}", file=sys.stderr)
         return 2
@@ -87,19 +91,23 @@ def main() -> int:
         print("Error: Invalid SMA values (positive, and low < high).", file=sys.stderr)
         return 2
 
-    # ---------------- Output directory ------------------------------------
-    out_dir = args.dir.parent / f"{args.out_prefix}{args.dir.name}"
+    # Validate ticker files
+    tickers: List[Path] = []
+    for t in args.tickers:
+        if not t.is_file():
+            print(f"Warning: {t} is not a file – skipped.", file=sys.stderr)
+        else:
+            tickers.append(t.resolve())
+    if not tickers:
+        print("Error: No valid ticker files provided.", file=sys.stderr)
+        return 2
+
+    # ---------------- Fixed output directory ------------------------------
+    out_dir = Path.cwd() / "out"
     if args.dry_run:
         print(f"[DRY‑RUN] Would create output directory: {out_dir}")
     else:
         out_dir.mkdir(parents=True, exist_ok=True)
-
-    # ---------------- Collect tickers -------------------------------------
-    tickers = sorted(f for f in args.dir.iterdir() if f.is_file() and f.suffix == args.ext)
-    if not tickers:
-        msg = f"No files with extension '{args.ext}' found in {args.dir}"
-        print(msg)
-        return 0
 
     # ---------------- golden_cross batch ----------------------------------
     golden_cmd: List[str] = [
