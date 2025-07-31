@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Plot SMA-grid back‑test metrics from one or many CSV files.
+Plot SMA-grid metrics from one or many CSV files.
 
 Features
 --------
@@ -12,13 +12,13 @@ Features
 Usage examples
 --------------
 # Default 2‑D line plot
-./plot_sma_heatmap.py --type 2d results.csv
+./plot.py --type 2d results.csv
 
 # 3‑D scatter plot saved to PNG
-./plot_sma_heatmap.py --type 3d -o plot.png results1.csv results2.csv
+./plot.py --type 3d -o plot.png results1.csv results2.csv
 
 # Heat‑map shown on screen
-./plot_sma_heatmap.py --type heatmap sma_grid.csv
+./plot.py --type heatmap sma_grid.csv
 """
 from __future__ import annotations
 
