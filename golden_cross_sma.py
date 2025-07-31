@@ -98,8 +98,11 @@ def load_data(path: str) -> pd.DataFrame:
 
 
 def compute_sma(df: pd.DataFrame, short: int, long: int) -> None:
-    df[f"SMA_{short}"] = df["CLOSE"].rolling(window=short, min_periods=1).mean()
-    df[f"SMA_{long}"] = df["CLOSE"].rolling(window=long, min_periods=1).mean()
+    # Both columns use min_periods=long. This guarantees the very first crossing can only occur after long
+    # observations. It is slightly more conservative (the short SMA is blank for a bit longer) but eliminates
+    # every possibility of an early, data-poor cross.
+    df[f"SMA_{short}"] = df["CLOSE"].rolling(window=short, min_periods=long).mean()
+    df[f"SMA_{long}"]  = df["CLOSE"].rolling(window=long,  min_periods=long).mean()
 
 
 def generate_signals(df: pd.DataFrame, short: int, long: int) -> None:
