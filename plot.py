@@ -30,6 +30,31 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 – required for 3‑D projection
 
+# ──────────────────────────────────────────────────────────────────────────────
+# CLI parsing
+# ──────────────────────────────────────────────────────────────────────────────
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Plot SMA-grid metrics from files.")
+
+    parser.add_argument("--type",
+                        choices=["2d", "3d", "heatmap"], default="2d",
+                        help="plot type: 2d (default), 3d or heatmap")
+
+    parser.add_argument("--output",
+                        type=Path,
+                        help="optional filename to save the plot instead of displaying it")
+
+    parser.add_argument("input_files",
+                        type=Path,
+                        nargs="+",
+                        help="input file(s)")
+
+    return parser.parse_args()
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Plot
+# ──────────────────────────────────────────────────────────────────────────────
 
 def plot_data(csv_files: list[Path], plot_type: str = "2d", output: Path | None = None) -> None:
     """Read *csv_files* (one or many) and create the chosen plot."""
@@ -96,19 +121,13 @@ def plot_data(csv_files: list[Path], plot_type: str = "2d", output: Path | None 
     else:
         plt.show()
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Main
+# ──────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Plot SMA-grid back‑test metrics from CSV files.")
-    parser.add_argument("--type", choices=["2d", "3d", "heatmap"], default="2d",
-                        help="Choose plot type: 2d (default), 3d, or heatmap")
-    parser.add_argument("-o", "--output", type=Path,
-                        help="Optional filename to save the plot instead of displaying it")
-    # Positional CSV files argument added *after* options, enabling <script> [options] files...
-    parser.add_argument("csv_files", type=Path, nargs="+", help="One or more input CSV files")
-
-    args = parser.parse_args()
-    plot_data(args.csv_files, args.type, args.output)
-
+    args = parse_args()
+    plot_data(args.input_files, args.type, args.output)
 
 if __name__ == "__main__":
     main()
