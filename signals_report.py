@@ -29,7 +29,7 @@ python signals_report.py out/*/*-signals.txt --jobs 8 --pairs --print
 import argparse
 import csv
 import os
-import py-utils import file_finder
+from py_utils import file_finder
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
