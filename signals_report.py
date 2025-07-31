@@ -29,6 +29,7 @@ python signals_report.py out/*/*-signals.txt --jobs 8 --pairs --print
 import argparse
 import csv
 import os
+import py-utils import file_finder
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -133,13 +134,18 @@ def main() -> None:
         description="Generate signal reports in parallel (no plotting).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("input_files", nargs="+", help="paths to *-signals.txt files")
+    parser.add_argument('--file-path', default=".", help='Directory to search files in')
+    parser.add_argument('--file-pattern', default=".", help='Glob pattern to match files')
+    parser.add_argument("--jobs", type=int, default=1, help="number of parallel jobs/processes (default 1)")
     parser.add_argument("--print", dest="do_print", action="store_true", help="print statistics to console")
     parser.add_argument("--pairs", action="store_true", help="include Buy‑Sell pair list in report")
-    parser.add_argument("--jobs", type=int, default=1, help="number of parallel jobs/processes (default 1)")
+    parser.add_argument("input_files", nargs="+", help="paths to *-signals.txt files")
 
     args = parser.parse_args()
-    paths = [Path(p) for p in args.input_files]
+
+    """Find all files"""
+    file_list = args.input_files or file_finder.find_files(args.file-path, args.file-pattern, true)
+    return 0
 
     if args.jobs == 1 or len(paths) == 1:
         for p in paths:
