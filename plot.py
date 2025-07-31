@@ -56,10 +56,10 @@ def parse_args() -> argparse.Namespace:
 # Plot
 # ──────────────────────────────────────────────────────────────────────────────
 
-def plot_data(csv_files: list[Path], plot_type: str = "2d", output: Path | None = None) -> None:
-    """Read *csv_files* (one or many) and create the chosen plot."""
+def plot_data(input_files: list[Path], plot_type: str = "2d", output: Path | None = None) -> None:
+    """Read *input_files* (one or many) and create the chosen plot."""
     dfs = []
-    for fp in csv_files:
+    for fp in input_files:
         df = pd.read_csv(fp)
         if df.shape[1] < 3:
             raise ValueError(f"{fp} must contain at least three columns")
