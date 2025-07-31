@@ -142,8 +142,7 @@ def main() -> int:
         sys.executable,
         str(args.signals_script),
         "--jobs", "12",
-        "--dir", "out",
-        "--pattern", "*-signals.txt",
+        *[str(sf) for sf in signal_files],
     ]
     rep_exit = _run_cmd(signals_cmd, "signals_report_batch", args.dry_run)
 

@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """
-signals_report.py – analyse **one or many** Buy/Sell signal files and create text summary
-reports, now with optional **parallel jobs**.
+signals_report.py – analyse **one or many** Buy/Sell signal files and create text summary reports, now with optional **parallel jobs**.
+
+(No plotting – the script only generates output files.)
 
 Generated parameters
 --------------------
-* **Number of positive / breakeven trades** – count of Buy‑Sell pairs where PnL ≥ 0
-* **Number of negative trades** – count of Buy‑Sell pairs where PnL < 0
+* **Number of positive / breakeven trades** – count of Buy‑Sell pairs where PnL ≥ 0
+* **Number of negative trades** – count of Buy‑Sell pairs where PnL < 0
 * **Total positive / breakeven PnL** – sum of all non‑negative trade results
 * **Total negative PnL** – sum of all negative trade results
-* **Difference (positive − |negative|)** – net PnL across all trades
-* **Win rate [%]** – (positive trades / total trades) × 100
-* **Average win / loss** – mean positive PnL divided by mean |negative| PnL (ratio > 1 desirable)
+* **Difference (positive − |negative|)** – net PnL across all trades
+* **Win rate [%]** – (positive trades / total trades) × 100
+* **Average win / loss** – mean positive PnL divided by mean |negative| PnL (ratio > 1 desirable)
 * **Profit factor** – Σ positive PnL ÷ |Σ negative PnL|  
-  > 2.0 — Very good | 1.5–2.0 — Strong | 1.1–1.5 — OK | ≈1 — Breakeven | <1 — Losing
+  > 2.0 — Very good | 1.5–2.0 — Strong | 1.1–1.5 — OK | ≈1 — Breakeven | <1 — Losing
 * **Expectancy per trade** – net PnL ÷ total trades (average profit/loss each trade)
 
 USAGE examples
@@ -137,15 +138,15 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    # Search parameters (renamed)
+    parser.add_argument("-d", "--dir", default=".", metavar="PATH", help="directory to search (default: current directory)")
+    parser.add_argument("-p", "--pattern", default="*-signals.txt", metavar="GLOB", help='glob pattern to match (default: "*-signals.txt")')
+    parser.add_argument("-r", "--recursive", action="store_true", help="search sub‑directories recursively")
+
     # Processing & output options
     parser.add_argument("--jobs", type=int, default=1, help="number of parallel jobs/processes (default 1)")
     parser.add_argument("--print", dest="do_print", action="store_true", help="print statistics to console")
     parser.add_argument("--pairs", action="store_true", help="include Buy‑Sell pair list in report")
-
-    # Search parameters
-    parser.add_argument("--dir", default=".", metavar="PATH", help="directory to search (default: current directory)")
-    parser.add_argument("--pattern", default="*-signals.txt", metavar="GLOB", help='glob pattern to match (default: "*-signals.txt")')
-    parser.add_argument("--recursive", action="store_true", help="search sub‑directories recursively")
 
     # Positional list of files (overrides search)
     parser.add_argument("input_files", nargs="*", help="explicit paths to *-signals.txt files; overrides directory search")
@@ -154,9 +155,10 @@ def main() -> None:
 
     # Resolve files
     if args.input_files:
-        paths = [Path(p).expanduser().resolve() for p in args.input_files]
+        paths: List[Path] = [Path(p).expanduser().resolve() for p in args.input_files]
     else:
-        paths = file_finder.find_files(args.dir, args.pattern, args.recursive)
+        found = file_finder.find_files(args.dir, args.pattern, args.recursive)
+        paths = [Path(p).expanduser().resolve() for p in found]
 
     if not paths:
         parser.error("No matching input files found.")
