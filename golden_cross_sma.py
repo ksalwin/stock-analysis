@@ -176,10 +176,9 @@ def main() -> None:
     if args.jobs == 1:
         results_iter = map(worker, args.files)
     else:
-        with cf.ProcessPoolExecutor(max_workers=args.jobs) as ex:
+        max_workers = min(args.jobs, os.cpu_count() or 1)
+        with cf.ProcessPoolExecutor(max_workers=max_workers) as ex:
             results_iter = ex.map(worker, args.files)
-            pb.update()
-
 
     for res in results_iter:
         pb.update()
