@@ -117,7 +117,7 @@ def plot_data(input_files: list[Path], plot_type: str = "2d", output: Path | Non
 
     if output:
         plt.savefig(output, dpi=300, bbox_inches="tight")
-        plt.close(fig)
+        plt.close(fig) # Close fig to prevent leak figure objects in batch workflows.
         print(f"Plot saved to: {output}")
     else:
         plt.show()
