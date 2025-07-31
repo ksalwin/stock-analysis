@@ -133,7 +133,7 @@ def parse_args() -> argparse.Namespace:
 
     # Search files parameters
     parser.add_argument("--dir", default=".", metavar="PATH", help="Directory to search (default: current dir).")
-    parser.add_argument("--pattern", default="*-signals.txt", help="File pattern.")
+    parser.add_argument("--pattern", default="*-signals-report.txt", help="File pattern.")
     parser.add_argument("--recursive", action="store_true", help="Search subdirectories recursively.")
     # Positional files argument last
     parser.add_argument("files", nargs="*", help="Input report files (batch mode)")
@@ -146,7 +146,6 @@ def _pretty(p: Path) -> str:
     except ValueError:
         return str(p)
 
-
 def group_by_ticker(files: Iterable[Path]) -> dict[str, list[Path]]:
     groups: dict[str, list[Path]] = defaultdict(list)
     for f in files:
@@ -157,10 +156,8 @@ def group_by_ticker(files: Iterable[Path]) -> dict[str, list[Path]]:
             #print(f"Warning: {f} skipped (filename pattern mismatch)", file=sys.stderr)
     return groups
 
-
 def _numeric_desc(col: str):
     return lambda r: -(getattr(r, col) or float("-inf"))
-
 
 def _combined_sort(sort_by: str):
     if sort_by not in COL_ORDER or sort_by in {"sma_low", "sma_high"}:
