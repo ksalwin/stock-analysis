@@ -122,6 +122,7 @@ def main() -> int:
         str(args.golden_script),
         str(args.sma_low),
         str(args.sma_high),
+        "--jobs", "16",
         *[str(t) for t in tickers],
         "-o",
         str(out_dir),
