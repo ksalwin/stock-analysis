@@ -107,12 +107,14 @@ def generate_signals(df: pd.DataFrame, short: int, long: int) -> None:
     change = above.astype(int).diff().fillna(0)
 
     mapping = {1: "Buy", -1: "Sell"}
-    labels = change.map(mapping).tolist()
+
+    # Keep unmapped rows as <NA> (not None!) so we can test with pd.isna()
+    labels = change.map(mapping)     # Pandas Series, not list
 
     prev = "Sell"
     final_labels: List[str] = []
-    for lbl in labels:
-        if lbl is None:
+    for lbl in labels.to_list():
+        if pd.isna(lbl):    # Correctly detects the “no-signal” rows
             lbl_str = f"No signal (previous was {prev})"
         else:
             lbl_str = lbl
