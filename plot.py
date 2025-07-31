@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
 # ──────────────────────────────────────────────────────────────────────────────
 # Plot
 # ──────────────────────────────────────────────────────────────────────────────
-
+def read_csv_safe(
 def plot_data(input_files: list[Path], plot_type: str = "2d", output: Path | None = None) -> None:
     """Read *input_files* (one or many) and create the chosen plot."""
     dfs = []
@@ -117,6 +117,7 @@ def plot_data(input_files: list[Path], plot_type: str = "2d", output: Path | Non
 
     if output:
         plt.savefig(output, dpi=300, bbox_inches="tight")
+        plt.close(fig)
         print(f"Plot saved to: {output}")
     else:
         plt.show()
