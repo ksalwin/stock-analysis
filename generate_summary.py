@@ -124,6 +124,22 @@ class Record:
 
 # ---------------- Helpers -----------------------------------------------------
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Combine golden‑cross report files into summaries.")
+
+    # Optional flags first so usage shows [options] before files
+    parser.add_argument("--sort-by", default="expectancy_per_trade", help="Metric to sort the combined summary by")
+    parser.add_argument("--separate-files", action="store_true", help="Also emit <ticker>-summary-<metric>.txt files")
+
+    # Search files parameters
+    parser.add_argument("--dir", default=".", metavar="PATH", help="Directory to search (default: current dir).")
+    parser.add_argument("--pattern", default="*-signals.txt", help="File pattern.")
+    parser.add_argument("--recursive", action="store_true", help="Search subdirectories recursively.")
+    # Positional files argument last
+    parser.add_argument("files", nargs="*", help="Input report files (batch mode)")
+
+    return parser.parse_args()
+
 def _pretty(p: Path) -> str:
     try:
         return str(p.relative_to(Path.cwd()))
@@ -178,20 +194,8 @@ def write_metric_files(records: list[Record], out_dir: Path):
 
 # ---------------- CLI ---------------------------------------------------------
 
-def main(argv: Sequence[str] | None = None):
-    pa = argparse.ArgumentParser(description="Combine golden‑cross report files into summaries.")
-    # Optional flags first so usage shows [options] before files
-    pa.add_argument("--sort-by", default="expectancy_per_trade", help="Metric to sort the combined summary by")
-    pa.add_argument("--separate-files", action="store_true", help="Also emit <ticker>-summary-<metric>.txt files")
-
-    # Search files parameters
-    pa.add_argument("--dir", default=".", metavar="PATH", help="Directory to search (default: current dir).")
-    pa.add_argument("--pattern", default="*-signals.txt", help="File pattern.")
-    pa.add_argument("--recursive", action="store_true", help="Search subdirectories recursively.")
-    # Positional files argument last
-    pa.add_argument("files", nargs="*", help="Input report files (batch mode)")
-    args = pa.parse_args(argv)
-
+def main():
+    args = parse_args()
 
     # Resolve files
     if args.files:
@@ -199,9 +203,6 @@ def main(argv: Sequence[str] | None = None):
     else:
         found = file_finder.find_files(args.dir, args.pattern, args.recursive)
         paths: List[Path] = [Path(p).expanduser().resolve() for p in found]
-
-    #progressbar = ProgressBar(len(paths))
-    print(len(paths))
 
     # Print error if no files found
     if not paths:
@@ -217,8 +218,6 @@ def main(argv: Sequence[str] | None = None):
         write_combined(recs, args.sort_by, out_dir)
         if args.separate_files:
             write_metric_files(recs, out_dir)
-        #progressbar.update()
-
 
 if __name__ == "__main__":
     main()
