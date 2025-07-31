@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-signals_report.py – analyse **one or many** Buy/Sell signal files and create text summary reports, now with optional **parallel jobs**.
-
-(No plotting – the script only generates output files.)
+signals_report.py – analyse **one or many** Buy/Sell signal files and create text summary
+reports, now with optional **parallel jobs**.
 
 Generated parameters
 --------------------
@@ -19,24 +18,27 @@ Generated parameters
 
 USAGE examples
 --------------
-# Sequential (1 job) — summary only
+# Explicit file list (sequential)
 python signals_report.py out/*/*-signals.txt
 
-# 8 concurrent jobs, with pairs & console print
-python signals_report.py out/*/*-signals.txt --jobs 8 --pairs --print
+# Directory search with glob pattern (recursive, 8 parallel jobs)
+python signals_report.py -d out -p "*-signals.txt" -r --jobs 8 --pairs --print
 """
+
+from __future__ import annotations
 
 import argparse
 import csv
 import os
-from py_utils import file_finder
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import List, Tuple
 
+from py_utils import file_finder
+
 # ────────────────────────────────────────────────────────────────────────────────
-# Core analytics
+# Core analytics helpers
 # ────────────────────────────────────────────────────────────────────────────────
 
 def read_signals(fname: Path) -> List[dict]:
@@ -54,7 +56,7 @@ def read_signals(fname: Path) -> List[dict]:
 
 
 def analyse(data: List[dict], include_pairs: bool) -> List[str]:
-    """Return report lines (pair list optional)."""
+    """Return report lines (optionally including individual Buy‑Sell pairs)."""
     lines: List[str] = []
     pos_tot = neg_tot = 0.0
     pos_cnt = neg_cnt = 0
@@ -115,7 +117,7 @@ def analyse(data: List[dict], include_pairs: bool) -> List[str]:
     return lines
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Worker function
+# Worker function (for parallel execution)
 # ────────────────────────────────────────────────────────────────────────────────
 
 def process_file(path: Path, include_pairs: bool) -> Tuple[Path, List[str]]:
@@ -126,27 +128,40 @@ def process_file(path: Path, include_pairs: bool) -> Tuple[Path, List[str]]:
     return path, report_lines
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Main entry
+# CLI entry‑point
 # ────────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Generate signal reports in parallel (no plotting).",
+        description="Generate signal reports (text‑only) – accept explicit files or search a directory.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument('--file-path', default=".", help='Directory to search files in')
-    parser.add_argument('--file-pattern', default=".", help='Glob pattern to match files')
+
+    # Processing & output options
     parser.add_argument("--jobs", type=int, default=1, help="number of parallel jobs/processes (default 1)")
     parser.add_argument("--print", dest="do_print", action="store_true", help="print statistics to console")
     parser.add_argument("--pairs", action="store_true", help="include Buy‑Sell pair list in report")
-    parser.add_argument("input_files", nargs="+", help="paths to *-signals.txt files")
+
+    # Search parameters
+    parser.add_argument("--dir", default=".", metavar="PATH", help="directory to search (default: current directory)")
+    parser.add_argument("--pattern", default="*-signals.txt", metavar="GLOB", help='glob pattern to match (default: "*-signals.txt")')
+    parser.add_argument("--recursive", action="store_true", help="search sub‑directories recursively")
+
+    # Positional list of files (overrides search)
+    parser.add_argument("input_files", nargs="*", help="explicit paths to *-signals.txt files; overrides directory search")
 
     args = parser.parse_args()
 
-    """Find all files"""
-    file_list = args.input_files or file_finder.find_files(args.file-path, args.file-pattern, true)
-    return 0
+    # Resolve files
+    if args.input_files:
+        paths = [Path(p).expanduser().resolve() for p in args.input_files]
+    else:
+        paths = file_finder.find_files(args.dir, args.pattern, args.recursive)
 
+    if not paths:
+        parser.error("No matching input files found.")
+
+    # Run processing (possibly in parallel)
     if args.jobs == 1 or len(paths) == 1:
         for p in paths:
             path, lines = process_file(p, args.pairs)
