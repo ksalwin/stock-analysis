@@ -57,7 +57,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Sequence
-
+from py_utils import file_finder
+from py_utils.progress_bar import ProgressBar
 # ---------------- Filename pattern -------------------------------------------
 
 FILE_RE = re.compile(r"^(?P<ticker>[A-Za-z]+)-(?P<sma_low>\d+)-(?P<sma_high>\d+)-signals-report\.txt$")
@@ -136,8 +137,8 @@ def group_by_ticker(files: Iterable[Path]) -> dict[str, list[Path]]:
         m = FILE_RE.match(f.name)
         if m:
             groups[m.group("ticker").lower()].append(f)
-        else:
-            print(f"Warning: {f} skipped (filename pattern mismatch)", file=sys.stderr)
+        #else:
+            #print(f"Warning: {f} skipped (filename pattern mismatch)", file=sys.stderr)
     return groups
 
 
@@ -161,7 +162,7 @@ def write_combined(records: list[Record], sort_by: str, out_dir: Path):
         writer.writeheader()
         for r in rows:
             writer.writerow({c: getattr(r, c) for c in COL_ORDER})
-    print(f"Written {_pretty(out_f)}")
+    #print(f"Written {_pretty(out_f)}")
 
 
 def write_metric_files(records: list[Record], out_dir: Path):
@@ -173,7 +174,7 @@ def write_metric_files(records: list[Record], out_dir: Path):
             writer.writeheader()
             for r in rows:
                 writer.writerow({"sma_low": r.sma_low, "sma_high": r.sma_high, col: getattr(r, col)})
-        print(f"Written {_pretty(out_f)}")
+        #print(f"Written {_pretty(out_f)}")
 
 # ---------------- CLI ---------------------------------------------------------
 
@@ -182,11 +183,30 @@ def main(argv: Sequence[str] | None = None):
     # Optional flags first so usage shows [options] before files
     pa.add_argument("--sort-by", default="expectancy_per_trade", help="Metric to sort the combined summary by")
     pa.add_argument("--separate-files", action="store_true", help="Also emit <ticker>-summary-<metric>.txt files")
+
+    # Search files parameters
+    pa.add_argument("--dir", default=".", metavar="PATH", help="Directory to search (default: current dir).")
+    pa.add_argument("--pattern", default="*-signals.txt", help="File pattern.")
+    pa.add_argument("--recursive", action="store_true", help="Search subdirectories recursively.")
     # Positional files argument last
-    pa.add_argument("files", nargs="+", help="Input report files (batch mode)")
+    pa.add_argument("files", nargs="*", help="Input report files (batch mode)")
     args = pa.parse_args(argv)
 
-    paths = [Path(p) for p in args.files]
+
+    # Resolve files
+    if args.files:
+        paths: List[Path] = [Path(p).expanduser().resolve() for p in args.files]
+    else:
+        found = file_finder.find_files(args.dir, args.pattern, args.recursive)
+        paths: List[Path] = [Path(p).expanduser().resolve() for p in found]
+
+    #progressbar = ProgressBar(len(paths))
+    print(len(paths))
+
+    # Print error if no files found
+    if not paths:
+       pa.error("No matching input files found.") 
+
     for p in paths:
         if not p.is_file():
             pa.error(f"File not found: {p}")
@@ -197,6 +217,7 @@ def main(argv: Sequence[str] | None = None):
         write_combined(recs, args.sort_by, out_dir)
         if args.separate_files:
             write_metric_files(recs, out_dir)
+        #progressbar.update()
 
 
 if __name__ == "__main__":
