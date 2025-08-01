@@ -144,10 +144,7 @@ def process_file(path: str, sma_short: int, sma_long: int, output_root: str) -> 
 
     # write outputs
     os.makedirs(out_dir, exist_ok=True)
-    full_path = os.path.join(out_dir, f"{base}-{sma_short}-{sma_long}.txt")
     sig_path = os.path.join(out_dir, f"{base}-{sma_short}-{sma_long}-signals.txt")
-
-    df[["TICKER", "DATE", f"SMA_{sma_short}", f"SMA_{sma_long}", "Signal"]].to_csv(full_path, index=False)
 
     df[df["Signal"].isin(["Buy", "Sell"])] [["DATE", "CLOSE", "Signal"]] \
         .rename(columns={"CLOSE": "Price"}).to_csv(sig_path, index=False)
