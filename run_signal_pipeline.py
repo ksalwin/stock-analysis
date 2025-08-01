@@ -66,10 +66,10 @@ def main() -> int:
     # External scripts
     default_dir = Path(__file__).with_name
     parser.add_argument("--golden-script", type=Path,
-                        default=default_dir("golden_cross_sma.py"),
+                        default=default_dir("0_generate_signals.py"),
                         help="Path to batch‑enabled golden_cross_sma.py.")
     parser.add_argument("--signals-script", type=Path,
-                        default=default_dir("signals_report.py"),
+                        default=default_dir("1_evaluate_performance.py"),
                         help="Path to batch‑enabled signals_report.py.")
 
     # Misc
