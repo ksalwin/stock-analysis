@@ -124,8 +124,7 @@ def main() -> int:
         str(args.sma_high),
         "--jobs", "16",
         *[str(t) for t in tickers],
-        "-o",
-        str(out_dir),
+        "--out", str(out_dir),
     ]
     gc_exit = _run_cmd(golden_cmd, "golden_cross_batch", args.dry_run)
 

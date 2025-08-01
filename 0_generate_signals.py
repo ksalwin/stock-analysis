@@ -25,10 +25,9 @@ Process many files with 8 parallel workers and skip “No signal” tickers:
 
 Outputs (stored in `<OUTPUT_DIR>/<ticker>/`)
 -------------------------------------------
-1. `<base>-<short>-<long>.txt`             – full dataset with SMAs & signals
-2. `<base>-<short>-<long>-signals.txt`     – Date, Price, Signal (Buy/Sell)
+`<base>-<short>-<long>-signals.txt`     – Date, Price, Signal (Buy/Sell)
 
-`<base>` is the input filename without extension (e.g. `SLV`).
+`<base>` is the input filename without extension (e.g. `slv`).
 """
 
 from __future__ import annotations
@@ -51,15 +50,12 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Generate Golden‑Cross SMA Buy/Sell signals in batch mode with optional parallelism."
     )
+
     p.add_argument("sma_short", type=int, help="Short SMA period (integer)")
     p.add_argument("sma_long", type=int, help="Long SMA period (integer)")
     p.add_argument("files", nargs="+", help="One or more input data files")
-    p.add_argument(
-        "-o", "--output", default=".", help="Root output directory (default: current)"
-    )
-    p.add_argument(
-        "-j", "--jobs", type=int, default=1, help="Number of parallel workers (default: 1)"
-    )
+    p.add_argument("--output", default=".", help="Root output directory (default: current)")
+    p.add_argument("--jobs", type=int, default=1, help="Number of parallel workers (default: 1)")
     p.add_argument(
         "--show-no-signal",
         dest="show_no",
@@ -68,10 +64,14 @@ def parse_args() -> argparse.Namespace:
     )
 
     args = p.parse_args()
+
+    # --- Argument validation
     if args.sma_short >= args.sma_long:
         p.error("sma_short must be smaller than sma_long")
+
     if args.jobs < 1:
         p.error("--jobs must be >= 1")
+
     return args
 
 
@@ -161,14 +161,28 @@ def process_file(path: str, sma_short: int, sma_long: int, output_root: str) -> 
 
 def main() -> None:
     args = parse_args()
+
+    # Create output directory
     os.makedirs(args.output, exist_ok=True)
 
-    buys: List[str] = []
-    sells: List[str] = []
-    nos: List[str] = []
+    # Prepare data containers
+    buys:   List[str] = []
+    sells:  List[str] = []
+    nos:    List[str] = []
 
-    worker = partial(process_file, sma_short=args.sma_short, sma_long=args.sma_long, output_root=args.output)
+    # Create a “worker” function with most of its parameters already  bound (curried) so that each call only
+    # needs the filename.
+    #   process_file(...)    – user-defined function that processes one CSV or JSON
+    #   sma_short, sma_long  – window sizes for simple moving averages
+    #   output_root          – where results should be written
+    worker = partial(
+        process_file,
+        sma_short=args.sma_short,
+        sma_long=args.sma_long,
+        output_root=args.output
+    )
 
+    # Run sequentially or in parallel
     if args.jobs == 1:
         results_iter = map(worker, args.files)
     else:
