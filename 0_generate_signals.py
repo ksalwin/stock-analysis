@@ -43,8 +43,6 @@ from typing import List, Tuple, Optional
 import numpy as np
 import pandas as pd
 
-from py_utils.progress_bar import ProgressBar
-
 # ──────────────────────────────────────────────────────────────────────────────
 # CLI parsing
 # ──────────────────────────────────────────────────────────────────────────────
@@ -169,8 +167,6 @@ def main() -> None:
     sells: List[str] = []
     nos: List[str] = []
 
-    pb = ProgressBar(len(args.files))
-
     worker = partial(process_file, sma_short=args.sma_short, sma_long=args.sma_long, output_root=args.output)
 
     if args.jobs == 1:
@@ -181,7 +177,6 @@ def main() -> None:
             results_iter = ex.map(worker, args.files)
 
     for res in results_iter:
-        pb.update()
         if not res:
             continue
         ticker, sig = res
