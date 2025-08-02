@@ -7,10 +7,8 @@ Features
 * 2‑D line plot (default)
 * 3‑D scatter plot (``--type 3d``)
 * Heat‑map / contour plot (``--type heatmap``)
+* Surface (``--type surface``)
 * Batch mode: supply multiple CSVs and they will be over‑plotted (legend shows file stem).
-
-This version extracts the heat‑map generation into a dedicated ``plot_heatmap`` helper,
-and enriches that helper with detailed, step‑by‑step comments for clarity.
 
 Usage examples
 --------------
@@ -43,9 +41,9 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--type",
-        choices=["2d", "3d", "heatmap"],
+        choices=["2d", "3d", "heatmap", "surface"],
         default="2d",
-        help="plot type: 2d (default), 3d or heatmap",
+        help="plot type: 2d (default), 3d, heatmap, surface",
     )
 
     parser.add_argument(
@@ -162,6 +160,112 @@ def plot_heatmap(
     # ------------------------------------------------------------------
     return fig, ax
 
+def plot_surface(
+    data: pd.DataFrame,
+    x_col: str,
+    y_col: str,
+    z_col: str,
+) -> tuple[plt.Figure, Axes3D]:
+    """Return a 3‑D **surface** plot.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Input data containing *x_col*, *y_col* and *z_col*.
+    x_col, y_col, z_col : str
+        Column names to use for X (rows), Y (columns) and the Z value plotted.
+
+    Returns
+    -------
+    (fig, ax) : tuple[matplotlib.figure.Figure, mpl_toolkits.mplot3d.Axes3D]
+        The Figure and its 3‑D Axes so the caller can further tweak or save.
+
+    Notes
+    -----
+    The implementation mirrors :pyfunc:`plot_heatmap` in spirit: we first pivot the
+    long‑format *data* frame into a dense 2‑D grid suitable for surface plotting and
+    then render it with :pyfunc:`Axes3D.plot_surface`, augmenting the plot with
+    thorough, inline commentary for educational purposes.
+    """
+
+    # ------------------------------------------------------------------
+    # 1. Reshape the long‑format *data* frame into a 2‑D grid (a pivot
+    #    table) so that each unique X‑value becomes a **row** and each
+    #    unique Y‑value becomes a **column**.  The cell holds the mean of
+    #    Z for that (X, Y) pair.  Example transformation:
+    #
+    #        ┌───────── original (long) format ─────────┐
+    #        │ SMA  LMA   score │
+    #        │  5    20   0.83  │
+    #        │  5    50   0.79  │    →  pivot_table →   LMA→   20    50   100
+    #        │ 10    20   0.81  │                       SMA ↓ ┌───────────────┐
+    #        │ 10    50   0.77  │                             │ 0.83  0.79  0.76│
+    #        │ 10    100  0.74  │                             │ 0.81  0.77  0.74│
+    #        └──────────────────┘                             └───────────────┘
+    #
+    #    Duplicate (SMA, LMA) pairs—if any—are *averaged* via ``aggfunc="mean"``.
+    #    The resulting 2‑D matrix (Z) is what ``imshow`` and ``contour`` expect.
+    # ------------------------------------------------------------------
+    grid = data.pivot_table(
+        index=x_col,          # rows   → X‑axis values
+        columns=y_col,        # columns→ Y‑axis values
+        values=z_col,         # cell values = Z
+        aggfunc="mean",
+    )
+
+    # Extract the *numeric* vectors representing the axis coordinates.
+    # ``pivot_table`` leaves them as (possibly) hetero‑typed Index objects,
+    # so we convert to *float64* ndarray for safe numeric processing.
+    x_vals = grid.columns.values.astype(float)  # shape = (N,)
+    y_vals = grid.index.values.astype(float)    # shape = (M,)
+
+    # ``plot_surface`` expects *meshgrid* inputs: two 2‑D arrays specifying
+    # the X & Y coordinates for every Z cell.  NumPy's ``meshgrid`` makes
+    # this trivial — note the ``indexing='xy'`` (default) which aligns with
+    # the Cartesian‑plane convention used by Matplotlib.
+    X, Y = np.meshgrid(x_vals, y_vals)  # both shape=(M, N)
+    Z = grid.values.astype(float)       # shape=(M, N)
+
+    # ------------------------------------------------------------------
+    # 2. Create a Figure and a single 3‑D Axes.  We use the familiar
+    #    "111" (one‑row, one‑col, first subplot) syntax and request the
+    #    "3d" projection.  Returning *fig* makes downstream saving easy.
+    # ------------------------------------------------------------------
+    fig = plt.figure()
+    ax: Axes3D = fig.add_subplot(111, projection="3d")
+
+    # ------------------------------------------------------------------
+    # 3. Render the surface.  ``plot_surface`` internally converts the
+    #    (X, Y, Z) numeric grids into a *Poly3DCollection* — effectively
+    #    a mesh of quadrilaterals.  By default the Z‑value drives the
+    #    face‑color via the active colormap; we pick "viridis" because it
+    #    is perceptually uniform and color‑blind friendly.
+    # ------------------------------------------------------------------
+    surf = ax.plot_surface(
+        X, Y, Z,
+        cmap="inferno",
+        edgecolor="none",  # hide gridlines for a cleaner look
+        antialiased=True,
+    )
+
+    # ------------------------------------------------------------------
+    # 4. Decorate axes: labels, title and a color‑bar to communicate the
+    #    Z‑to‑color mapping.  We also rotate the view so the surface is
+    #    easily interpretable (elev=30°, azim=-135° is a common default).
+    # ------------------------------------------------------------------
+    ax.set_xlabel(x_col)
+    ax.set_ylabel(y_col)
+    ax.set_zlabel(z_col)
+    ax.set_title(f"Surface plot of {z_col} vs {x_col} & {y_col}")
+    ax.view_init(elev=30, azim=-135)
+
+    fig.colorbar(surf, ax=ax, shrink=0.6, aspect=10, label=z_col)
+
+    # ------------------------------------------------------------------
+    # 5. Return Figure and Axes for optional post‑processing.
+    # ------------------------------------------------------------------
+    return fig, ax
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Plot dispatcher
 # ──────────────────────────────────────────────────────────────────────────────
@@ -190,6 +294,9 @@ def plot_data(
     # Dispatch to the specific plot type requested.
     if plot_type == "heatmap":
         fig, ax = plot_heatmap(data, x_col, y_col, z_col)
+
+    elif plot_type == "surface":
+        fig, ax = plot_surface(data, x_col, y_col, z_col)
 
     elif plot_type == "3d":
         fig = plt.figure()
