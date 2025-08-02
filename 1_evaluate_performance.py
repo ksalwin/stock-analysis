@@ -39,6 +39,31 @@ from typing import List, Tuple
 from py_utils import file_finder
 
 # ────────────────────────────────────────────────────────────────────────────────
+# CLI parsing
+# ────────────────────────────────────────────────────────────────────────────────
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate signal reports (text‑only) – accept explicit files or search a directory.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    # Search parameters (renamed)
+    parser.add_argument("-d", "--dir", default=".", metavar="PATH", help="directory to search (default: current directory)")
+    parser.add_argument("-p", "--pattern", default="*-signals.txt", metavar="GLOB", help='glob pattern to match (default: "*-signals.txt")')
+    parser.add_argument("-r", "--recursive", action="store_true", help="search sub‑directories recursively")
+
+    # Processing & output options
+    parser.add_argument("--jobs", type=int, default=1, help="number of parallel jobs/processes (default 1)")
+    parser.add_argument("--print", dest="do_print", action="store_true", help="print statistics to console")
+    parser.add_argument("--pairs", action="store_true", help="include Buy‑Sell pair list in report")
+
+    # Positional list of files (overrides search)
+    parser.add_argument("input_files", nargs="*", help="explicit paths to *-signals.txt files; overrides directory search")
+
+    return parser.parse_args()
+
+# ────────────────────────────────────────────────────────────────────────────────
 # Core analytics helpers
 # ────────────────────────────────────────────────────────────────────────────────
 
@@ -133,25 +158,7 @@ def process_file(path: Path, include_pairs: bool) -> Tuple[Path, List[str]]:
 # ────────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Generate signal reports (text‑only) – accept explicit files or search a directory.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-
-    # Search parameters (renamed)
-    parser.add_argument("-d", "--dir", default=".", metavar="PATH", help="directory to search (default: current directory)")
-    parser.add_argument("-p", "--pattern", default="*-signals.txt", metavar="GLOB", help='glob pattern to match (default: "*-signals.txt")')
-    parser.add_argument("-r", "--recursive", action="store_true", help="search sub‑directories recursively")
-
-    # Processing & output options
-    parser.add_argument("--jobs", type=int, default=1, help="number of parallel jobs/processes (default 1)")
-    parser.add_argument("--print", dest="do_print", action="store_true", help="print statistics to console")
-    parser.add_argument("--pairs", action="store_true", help="include Buy‑Sell pair list in report")
-
-    # Positional list of files (overrides search)
-    parser.add_argument("input_files", nargs="*", help="explicit paths to *-signals.txt files; overrides directory search")
-
-    args = parser.parse_args()
+    args = parse_args()
 
     # Resolve files
     if args.input_files:
