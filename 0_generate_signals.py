@@ -79,7 +79,7 @@ def parse_args() -> argparse.Namespace:
 # Data helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def load_data(path: str) -> pd.DataFrame:
+def load_data_from_file(path: str) -> pd.DataFrame:
     # Read the file (returns data frame)
     df = pd.read_csv(
         path,
@@ -156,9 +156,11 @@ def process_file(path: str, sma_short: int, sma_long: int, output_root: str) -> 
     base = os.path.splitext(os.path.basename(path))[0]
     out_dir = os.path.join(output_root, base)
 
-    df = load_data(path)
+    # Read data from input file
+    df = load_data_from_file(path)
 
     compute_sma(df, sma_short, sma_long)
+
     generate_signals(df, sma_short, sma_long)
 
     # write outputs
