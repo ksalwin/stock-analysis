@@ -103,7 +103,7 @@ def load_data(path: str) -> pd.DataFrame:
         errors="coerce" # turn any malformed rows into NaT so the don't crash the parse
     )
 
-    # Drop the original DATE and TIME columns
+    # Drop the original DATE and TIME columns - replaced by DATETIME
     df = df.drop(columns=["DATE", "TIME"])
 
     # Columns check (must be before set_index)
@@ -156,10 +156,7 @@ def process_file(path: str, sma_short: int, sma_long: int, output_root: str) -> 
     base = os.path.splitext(os.path.basename(path))[0]
     out_dir = os.path.join(output_root, base)
 
-    try:
-        df = load_data(path)
-    except Exception:
-        return None  # skip malformed
+    df = load_data(path)
 
     compute_sma(df, sma_short, sma_long)
     generate_signals(df, sma_short, sma_long)
@@ -168,7 +165,7 @@ def process_file(path: str, sma_short: int, sma_long: int, output_root: str) -> 
     os.makedirs(out_dir, exist_ok=True)
     sig_path = os.path.join(out_dir, f"{base}-{sma_short}-{sma_long}-signals.txt")
 
-    df[df["Signal"].isin(["Buy", "Sell"])] [["DATE", "CLOSE", "Signal"]] \
+    df[df["Signal"].isin(["Buy", "Sell"])] [["DATETIME", "CLOSE", "Signal"]] \
         .rename(columns={"CLOSE": "Price"}).to_csv(sig_path, index=False)
 
     return df["TICKER"].iloc[-1], df["Signal"].iloc[-1]
