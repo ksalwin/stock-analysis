@@ -118,31 +118,70 @@ def load_data_from_file(path: str) -> pd.DataFrame:
 
 
 def compute_sma(df: pd.DataFrame, short: int, long: int) -> None:
+    """
+    Append short- and long-horizon Simple Moving Averages (SMAs) to *df*.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Must contain a 'CLOSE' column.  The DataFrame is modified in place.
+    short : int
+        Window length for the short SMA (e.g. 20).
+    long : int
+        Window length for the long SMA (e.g. 50).
+
+    Notes
+    -----
+    * New columns are named 'SMA_<short>' and 'SMA_<long>'.
+    * Values are NaN until the rolling window is fully populated
+      (`min_periods` equals the window length).
+    """
     df[f"SMA_{short}"] = df["CLOSE"].rolling(window=short, min_periods=short).mean()
-    df[f"SMA_{long}"]  = df["CLOSE"].rolling(window=long,  min_periods=long).mean()
+    df[f"SMA_{long}"]  = df["CLOSE"].rolling(window=long,  min_periods=long ).mean()
 
 
 def generate_signals(df: pd.DataFrame, short: int, long: int) -> None:
+    """
+    Add a 'Signal' column indicating SMA crossovers.
+
+    A 'Buy' is recorded when SMA_short crosses above SMA_long,
+    a 'Sell' when it crosses below, and other rows get a textual
+    'No signal (previous was …)' marker.  The DataFrame is modified
+    in place.
+    """
+
+    # Detect where the short SMA is above the long SMA
+    # above is a pandas.Series of True / False values that tells, row-by-row,
+    # whether the short SMA is currently above the long SMA.
     above = df[f"SMA_{short}"] > df[f"SMA_{long}"]
+
+    # Find every time that Boolean changes value. Replace NaN with 0.
     change = above.astype(int).diff().fillna(0)
 
+    # Map integers {-1, 1} to human-readable labels
     mapping = {1: "Buy", -1: "Sell"}
 
-    # Keep unmapped rows as <NA> (not None!) so we can test with pd.isna()
+    # Map to "Buy" ( +1 ) and "Sell" ( -1 ). Replace 0 as NaN,
     labels = change.map(mapping)     # Pandas Series, not list
 
-    prev = "Sell"
+    # Walk through the "Buy"/"Sell"/NaN series row-by-row,
+    # turning stretches of NaN into human-readable "No signal (previous was …)" fillers
+    # while remembering the last real action.
+    prev = "None"
     final_labels: List[str] = []
-    for lbl in labels.to_list():
-        if pd.isna(lbl):    # Correctly detects the “no-signal” rows
+
+    for lbl in labels.to_list():    # Iterate once per bar
+        if pd.isna(lbl):            # No crossover on this bar
             lbl_str = f"No signal (previous was {prev})"
-        else:
+        else:                       # Got "Buy" or "Sell"
             lbl_str = lbl
             prev = lbl
         final_labels.append(lbl_str)
 
+    # Add signal column to the DataFrame
     df["Signal"] = final_labels
 
+    print(df.header())
 
 # ──────────────────────────────────────────────────────────────────────────────
 # File‑level processing
@@ -156,12 +195,13 @@ def process_file(path: str, sma_short: int, sma_long: int, output_root: str) -> 
     base = os.path.splitext(os.path.basename(path))[0]
     out_dir = os.path.join(output_root, base)
 
-    # Read data from input file
     df = load_data_from_file(path)
 
     compute_sma(df, sma_short, sma_long)
 
     generate_signals(df, sma_short, sma_long)
+
+    print(list(df.columns))
 
     # write outputs
     os.makedirs(out_dir, exist_ok=True)
