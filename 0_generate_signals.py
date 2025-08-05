@@ -144,10 +144,20 @@ def generate_signals(df: pd.DataFrame, short: int, long: int) -> None:
     """
     Add a 'Signal' column indicating SMA crossovers.
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Must contain a 'CLOSE' column.  The DataFrame is modified in place.
+    short : int
+        Window length for the short SMA (e.g. 20).
+    long : int
+        Window length for the long SMA (e.g. 50).
+
+    Notes
+    -----
     A 'Buy' is recorded when SMA_short crosses above SMA_long,
-    a 'Sell' when it crosses below, and other rows get a textual
-    'No signal (previous was …)' marker.  The DataFrame is modified
-    in place.
+    A 'Sell' when it crosses below, and other rows get a textual 'No signal (previous was …)' marker.
+    The DataFrame is modified in place.
     """
 
     # Detect where the short SMA is above the long SMA
@@ -181,19 +191,14 @@ def generate_signals(df: pd.DataFrame, short: int, long: int) -> None:
     # Add signal column to the DataFrame
     df["Signal"] = final_labels
 
-    print(df.head())
-
 # ──────────────────────────────────────────────────────────────────────────────
 # File‑level processing
 # ──────────────────────────────────────────────────────────────────────────────
 
-def process_file(path: str, sma_short: int, sma_long: int, output_root: str) -> Optional[Tuple[str, str]]:
+def process_file(path: str, sma_short: int, sma_long: int, out_dir: str) -> Optional[Tuple[str, str]]:
     """Process a single file; return (ticker, latest_signal) or None to skip."""
     if os.path.getsize(path) == 0:
         return None  # silently skip empty
-
-    base = os.path.splitext(os.path.basename(path))[0]
-    out_dir = os.path.join(output_root, base)
 
     df = load_data_from_file(path)
 
@@ -204,7 +209,7 @@ def process_file(path: str, sma_short: int, sma_long: int, output_root: str) -> 
     print(list(df.columns))
 
     # write outputs
-    os.makedirs(out_dir, exist_ok=True)
+    base = os.path.splitext(os.path.basename(path))[0]
     sig_path = os.path.join(out_dir, f"{base}-{sma_short}-{sma_long}-signals.txt")
 
     df[df["Signal"].isin(["Buy", "Sell"])] [["DATETIME", "CLOSE", "Signal"]] \
@@ -230,14 +235,14 @@ def main() -> None:
 
     # Create a “worker” function with most of its parameters already  bound (curried) so that each call only
     # needs the filename.
-    #   process_file(...)    – user-defined function that processes one CSV or JSON
-    #   sma_short, sma_long  – window sizes for simple moving averages
-    #   output_root          – where results should be written
+    #   process_file(...)   – user-defined function that processes one CSV or JSON
+    #   sma_short, sma_long – window sizes for simple moving averages
+    #   out_dir             – where results should be written
     worker = partial(
         process_file,
         sma_short=args.sma_short,
         sma_long=args.sma_long,
-        output_root=args.output
+        out_dir=args.output
     )
 
     # Run sequentially or in parallel
