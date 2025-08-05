@@ -79,19 +79,41 @@ def parse_args() -> argparse.Namespace:
 # Data helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _sanitize_cols(df: pd.DataFrame) -> None:
-    df.columns = [str(c).strip().strip("<>").upper() for c in df.columns]
-
-
 def load_data(path: str) -> pd.DataFrame:
-    df = pd.read_csv(path, header=0)
-    _sanitize_cols(df)
-    required = {"TICKER", "DATE", "CLOSE"}
+    # Read the file (returns data frame)
+    df = pd.read_csv(
+        path,
+        header=0,   # First row is the header
+        dtype={"<TICKER>": "string",
+               "<DATE>"  : "string",
+               "<TIME>"  : "string"}, # Convert ticker to str (without it would be obj)
+    )
+
+    # Remove '<>' from header names
+    df.columns = df.columns.str.strip("<>")
+
+    # Ensure DATE and TIME is the right length - needed for valid combining
+    df["DATE"] = df["DATE"].str.zfill(8)    # YYYYMMDD
+    df["TIME"] = df["TIME"].str.zfill(6)    # HHMMSS
+
+    # Combine DATE and TIME to DATETIME
+    df["DATETIME"] = pd.to_datetime(
+        df["DATE"] + df["TIME"],
+        format="%Y%m%d%H%M%S",
+        errors="coerce" # turn any malformed rows into NaT so the don't crash the parse
+    )
+
+    # Drop the original DATE and TIME columns
+    df = df.drop(columns=["DATE", "TIME"])
+
+    # Columns check (must be before set_index)
+    required = {"TICKER", "DATETIME", "CLOSE"}
     if not required.issubset(df.columns):
-        raise ValueError(
-            f"File '{path}' missing required columns; found {', '.join(df.columns)}"
-        )
-    df["DATE"] = pd.to_datetime(df["DATE"].astype(str), format="%Y%m%d")
+        raise ValueError(f"File '{path}' missing required columns; found {', '.join(df.columns)}")
+
+    # Set index to DATETIME and sort
+    df = df.set_index("DATETIME").sort_index()
+
     return df
 
 
