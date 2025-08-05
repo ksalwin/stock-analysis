@@ -181,7 +181,7 @@ def generate_signals(df: pd.DataFrame, short: int, long: int) -> None:
     # Add signal column to the DataFrame
     df["Signal"] = final_labels
 
-    print(df.header())
+    print(df.head())
 
 # ──────────────────────────────────────────────────────────────────────────────
 # File‑level processing
