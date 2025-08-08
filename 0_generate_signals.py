@@ -48,20 +48,29 @@ import pandas as pd
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate Golden‑Cross SMA Buy/Sell signals in batch mode with optional parallelism."
+            description="Generate Golden‑Cross SMA Buy/Sell signals in batch mode with optional parallelism."
     )
 
-    parser.add_argument("sma_short", type=int, help="Short SMA period (integer)")
-    parser.add_argument("sma_long", type=int, help="Long SMA period (integer)")
-    parser.add_argument("files", nargs="+", help="One or more input data files")
-    parser.add_argument("--output", default="out/", help="Root output directory (default: current)")
-    parser.add_argument("--jobs", type=int, default=1, help="Number of parallel workers (default: 1)")
     parser.add_argument(
-        "--show-no-signal",
-        dest="show_no",
-        action="store_true",
-        help="Also print tickers whose latest signal is 'No signal …'",
-    )
+            "--sma_short", type=int,
+            help="Short SMA period (integer)")
+    parser.add_argument(
+            "--sma_long", type=int,
+            help="Long SMA period (integer)")
+    parser.add_argument(
+            "--output", default="out/",
+            help="Root output directory (default: current)")
+    parser.add_argument(
+            "--jobs", type=int, default=1,
+            help="Number of parallel workers (default: 1)")
+    parser.add_argument(
+            "--show-no-signal",
+            dest="show_no",
+            action="store_true",
+            help="Also print tickers whose latest signal is 'No signal …'")
+    parser.add_argument(
+            "files", nargs="+",
+            help="One or more input data files")
 
     args = parser.parse_args()
 
