@@ -54,7 +54,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("sma_short", type=int, help="Short SMA period (integer)")
     parser.add_argument("sma_long", type=int, help="Long SMA period (integer)")
     parser.add_argument("files", nargs="+", help="One or more input data files")
-    parser.add_argument("--output", default=".", help="Root output directory (default: current)")
+    parser.add_argument("--output", default="out/", help="Root output directory (default: current)")
     parser.add_argument("--jobs", type=int, default=1, help="Number of parallel workers (default: 1)")
     parser.add_argument(
         "--show-no-signal",
@@ -206,14 +206,21 @@ def process_file(path: str, sma_short: int, sma_long: int, out_dir: str) -> Opti
 
     generate_signals(df, sma_short, sma_long)
 
-    print(list(df.columns))
-
-    # write outputs
+    # Write outputs
     base = os.path.splitext(os.path.basename(path))[0]
     sig_path = os.path.join(out_dir, f"{base}-{sma_short}-{sma_long}-signals.txt")
 
-    df[df["Signal"].isin(["Buy", "Sell"])] [["DATETIME", "CLOSE", "Signal"]] \
-        .rename(columns={"CLOSE": "Price"}).to_csv(sig_path, index=False)
+    # Filter for Buy/Sell signals only
+    filtered_df = df[ df["Signal"].isin(["Buy", "Sell"]) ]
+
+    # Keep only columns needed
+    filtered_df = filtered_df[["CLOSE", "Signal"]]
+
+    # Rename "CLOSE" to "Price"
+    filtered_df = filtered_df.rename(columns={"CLOSE": "Price"})
+
+    # Save to csv
+    filtered_df.to_csv(sig_path, index=False)
 
     return df["TICKER"].iloc[-1], df["Signal"].iloc[-1]
 
