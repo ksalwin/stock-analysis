@@ -1,33 +1,64 @@
 #!/usr/bin/env python3
 """
-Golden‑Cross SMA Signal Generator — Batch & Parallel
+Golden-Cross SMA Signal Generator — Batch & Parallel
 ===================================================
-Generate Buy/Sell signals with a Golden‑Cross (short SMA crossing long SMA)
-strategy for **one or more** OHLC text files. Results are saved as `.txt`
-CSV‑style files; no charts are produced. Supports **parallel execution** via a
-`--jobs/-j` switch.
+Generate Buy/Sell signals using a Golden-Cross strategy (SMA_short crossing
+SMA_long) for one or more OHLC CSV text files. Files are processed
+sequentially or in parallel.
 
 Usage
 -----
-    python golden_cross_sma.py <SMA_short> <SMA_long> <files...> [options]
+    python 0_generate_signals.py \
+        --sma-short N --sma-long M \
+        [--out-dir DIR] [--jobs N] [--show-no-signal] \
+        FILE [FILE ...]
 
-Options
-~~~~~~~
-  -o, --output DIR        Root directory for results (default: .)
-  -j, --jobs N            Run up to N files in parallel (default: 1 ⇒ sequential)
-  --show-no-signal        Also print tickers whose latest signal is "No signal …"
+Arguments
+---------
+  --sma-short N          Window for the short SMA (int, required)
+  --sma-long M           Window for the long SMA (int, required)
+  --out-dir DIR          Output directory (default: ./out/)
+  --jobs N               Process up to N files in parallel (default: 1)
+  --show-no-signal       Also print tickers whose latest signal is "No signal …"
 
-Example
-~~~~~~~
-Process many files with 8 parallel workers and skip “No signal” tickers:
+Input
+-----
+CSV with a header row. Required columns are '<TICKER>', '<DATE>', '<TIME>',
+and '<CLOSE>' (angle brackets are literally present in the file). DATE is
+YYYYMMDD and TIME is HHMMSS. The script removes the angle brackets from column
+names, builds a pandas datetime index from DATE+TIME, and sorts by it.
 
-    python golden_cross_sma.py 20 100 data/*.txt -o ./out -j 8
+Output
+------
+For each input file, writes:
 
-Outputs (stored in `<OUTPUT_DIR>/<ticker>/`)
--------------------------------------------
-`<base>-<short>-<long>-signals.txt`     – Date, Price, Signal (Buy/Sell)
+    <out_dir>/<base>-<short>-<long>-signals.txt
 
-`<base>` is the input filename without extension (e.g. `slv`).
+where <base> is the input file name without extension.
+
+Each output file contains only the crossover rows and two columns:
+
+    Price, Signal
+
+with "Price" taken from CLOSE and "Signal" being "Buy" or "Sell".
+
+Console summary
+---------------
+After processing, prints one-line summaries like:
+
+    Buy: TKR1 TKR2
+    Sell: TKR3
+
+and, if --show-no-signal is given:
+
+    No signal: TKR4 TKR5
+
+Notes
+-----
+- Empty input files are skipped silently.
+- Validates that --sma-short ≤ --sma-long and --jobs ≥ 1.
+- Requires NumPy and pandas.
+- Uses a process pool when --jobs > 1 to parallelize per-file work.
 """
 
 from __future__ import annotations
@@ -37,7 +68,7 @@ import concurrent.futures as cf
 from functools import partial
 import os
 import sys
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -52,13 +83,13 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-            "--sma_short", type=int,
+            "--sma-short", type=int,
             help="Short SMA period (integer)")
     parser.add_argument(
-            "--sma_long", type=int,
+            "--sma-long", type=int,
             help="Long SMA period (integer)")
     parser.add_argument(
-            "--output", default="out/",
+            "--out-dir", default="out/",
             help="Root output directory (default: current)")
     parser.add_argument(
             "--jobs", type=int, default=1,
@@ -75,7 +106,7 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
 
     # --- Argument validation
-    if args.sma_short >= args.sma_long:
+    if args.sma_short and args.sma_long and args.sma_short > args.sma_long:
         parser.error("sma_short must be smaller than sma_long")
 
     if args.jobs < 1:
@@ -231,6 +262,7 @@ def process_file(path: str, sma_short: int, sma_long: int, out_dir: str) -> Opti
     # Save to csv
     filtered_df.to_csv(sig_path, index=False)
 
+    # Return last [ticker, signal]
     return df["TICKER"].iloc[-1], df["Signal"].iloc[-1]
 
 
@@ -242,7 +274,7 @@ def main() -> None:
     args = parse_args()
 
     # Create output directory
-    os.makedirs(args.output, exist_ok=True)
+    os.makedirs(args.out_dir, exist_ok=True)
 
     # Prepare data containers
     buys:   List[str] = []
@@ -258,7 +290,7 @@ def main() -> None:
         process_file,
         sma_short=args.sma_short,
         sma_long=args.sma_long,
-        out_dir=args.output
+        out_dir=args.out_dir
     )
 
     # Run sequentially or in parallel
