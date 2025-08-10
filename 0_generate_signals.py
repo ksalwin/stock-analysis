@@ -79,21 +79,16 @@ import pandas as pd
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-            description="Generate Golden‑Cross SMA Buy/Sell signals in batch mode with optional parallelism."
+            description="Generate Golden‑Cross SMA Buy/Sell signals."
     )
 
-    parser.add_argument(
-            "--sma-short", type=int,
-            help="Short SMA period (integer)")
-    parser.add_argument(
-            "--sma-long", type=int,
-            help="Long SMA period (integer)")
-    parser.add_argument(
-            "--out-dir", default="out/",
-            help="Root output directory (default: current)")
+    # Common arguments
     parser.add_argument(
             "--jobs", type=int, default=1,
             help="Number of parallel workers (default: 1)")
+    parser.add_argument(
+            "--out-dir", default="out/",
+            help="Root output directory (default: current)")
     parser.add_argument(
             "--show-no-signal",
             dest="show_no",
@@ -102,6 +97,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
             "files", nargs="+",
             help="One or more input data files")
+
+    # Single SMA pair
+    parser.add_argument(
+            "--sma-short", type=int,
+            help="Short SMA period (integer)")
+    parser.add_argument(
+            "--sma-long", type=int,
+            help="Long SMA period (integer)")
+
+    # SMA rage (min, max, step) for both low and high
+    parser.add_argument(
+            "--sma-low-range", nargs=3, type=int, metavar=("LMIN", "LMAX", "LSTEP"),
+            help="Range for SMA low as three ints: min max step"
+    parser.add_argument(
+            "--sma-high-range", nargs=3, type=int, metavar=("LMIN", "LMAX", "LSTEP"),
+            help="Range for SMA low as three ints: min max step"
+
 
     args = parser.parse_args()
 
