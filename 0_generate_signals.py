@@ -342,12 +342,6 @@ def main() -> None:
         args.sma_short_range = [args.sma_short, args.sma_short, 1]
         args.sma_long_range  = [args.sma_long,  args.sma_long,  1]
 
-    print(args.sma_short)
-    print(args.sma_long)
-
-    print(args.sma_short_range)
-    print(args.sma_long_range)
-
     system.exit()
 
     # Create a “worker” function with most of its parameters already  bound (curried) so that each call only
