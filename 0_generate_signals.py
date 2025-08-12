@@ -127,12 +127,12 @@ def parse_args() -> argparse.Namespace:
                             (args.sma_long_range  is not None)
 
     # Both single and range arguments provided - error
-    if single_any and range_any:
+    if any_single_args_given and any_range_args_given:
         parser.error("Choose ONE mode: single (--sma-short & --sma-long) "
                      "OR range (--sma-short-range AND --sma-long-range).")
 
     # Validate single arguments
-    if single_any:
+    if any_single_args_given:
         if args.sma_short is None or args.sma_long is None:
             parser.error("In single mode you must provide BOTH --sma-short and --sma-long.")
         if args.sma_short < 1 or args.sma_long < 1:
@@ -142,7 +142,7 @@ def parse_args() -> argparse.Namespace:
         args.mode = "single"
 
     # Validate range arguments
-    elif range_any:
+    elif any_range_args_given:
         if args.sma_short_range is None or args.sma_long_range is None:
             parser.error("In range mode you must provide BOTH --sma-short-range and --sma-long-range.")
 
@@ -339,11 +339,14 @@ def main() -> None:
 
     # Convert single arguments to range to unify processing
     if args.mode == "single":
-        args.sma_low_range  = [args.sma_low,  args.sma_low,  1]
-        args.sma_high_range = [args.sma_high, args.sma_high, 1]
+        args.sma_short_range = [args.sma_short, args.sma_short, 1]
+        args.sma_long_range  = [args.sma_long,  args.sma_long,  1]
 
-    print(sma_low_range)
-    print(sma_high_range)
+    print(args.sma_short)
+    print(args.sma_long)
+
+    print(args.sma_short_range)
+    print(args.sma_long_range)
 
     system.exit()
 
