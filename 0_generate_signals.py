@@ -118,11 +118,54 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
 
     # --- Argument validation
-    if args.sma_short and args.sma_long and args.sma_short > args.sma_long:
-        parser.error("sma_short must be smaller than sma_long")
-
     if args.jobs < 1:
         parser.error("--jobs must be >= 1")
+
+
+    # Decide mode
+    any_single_args_given = (args.sma_low is not None) or (args.sma_high is not None)
+    any_range_args_given  = (args.sma_low_range is not None) or
+                            (args.sma_high_range is not None)
+
+    # Both single and range arguments provided - error
+    if single_any and range_any:
+        parser.error("Choose ONE mode: single (--sma-low & --sma-high) "
+                     "OR range (--sma-low-range AND --sma-high-range).")
+
+    # Validate single arguments
+    if single_any:
+        if args.sma_low is None or args.sma_high is None:
+            parser.error("In single mode you must provide BOTH --sma-low and --sma-high.")
+        if args.sma_low < 1 or args.sma_high < 1:
+            parser.error("--sma-low/--sma-high must be positive integers.")
+        if args.sma_low > args.sma_high:
+            parser.error("--sma-low must be <= --sma-high.")
+        args.mode = "single"
+
+    # Validate range arguments
+    elif range_any:
+        if args.sma_low_range is None or args.sma_high_range is None:
+            parser.error("In range mode you must provide BOTH --sma-low-range and --sma-high-range.")
+
+        # Unpack input arguments tuple
+        (lmin, lmax, lstep) = args.sma_low_range
+        (hmin, hmax, hstep) = args.sma_high_range
+
+        # Validate arguments
+        for name, min_val, max_val, step in (("sma-low-range",  lmin, lmax, lstep),
+                                             ("sma-high-range", hmin, hmax, hstep)):
+            if min_val < 1 or max_val < 1 or step < 1:
+                parser.error(f"--{name}: all values must be positive integers.")
+            if min_val > max_val:
+                parser.error(f"--{name}: min must be <= max.")
+
+        args.mode = "range"
+    else:
+        parser.error("Choose a mode: either single (--sma-low & --sma-high) "
+                     "or range (--sma-low-range & --sma-high-range).")
+
+    # Normalize output directory
+    args.out_dir = os.path.join(args.out_dir, "")
 
     return args
 
