@@ -342,19 +342,19 @@ def main() -> None:
         args.sma_short_range = [args.sma_short, args.sma_short, 1]
         args.sma_long_range  = [args.sma_long,  args.sma_long,  1]
 
-    system.exit()
-
     # Create a “worker” function with most of its parameters already  bound (curried) so that each call only
     # needs the filename.
     #   process_file(...)   – user-defined function that processes one CSV or JSON
-    #   sma_short, sma_long – window sizes for simple moving averages
+    #   sma_short_range, sma_long_range – ranges for simple moving averages
     #   out_dir             – where results should be written
     worker = partial(
         process_file,
-        sma_short=args.sma_short,
-        sma_long=args.sma_long,
+        sma_short_range=args.sma_short_range,
+        sma_long_range=args.sma_long_range,
         out_dir=args.out_dir
     )
+
+    system.exit()
 
     # Run sequentially or in parallel
     if args.jobs == 1:
