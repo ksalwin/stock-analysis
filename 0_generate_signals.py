@@ -109,11 +109,10 @@ def parse_args() -> argparse.Namespace:
     # SMA rage (min, max, step) for both low and high
     parser.add_argument(
             "--sma-low-range", nargs=3, type=int, metavar=("LMIN", "LMAX", "LSTEP"),
-            help="Range for SMA low as three ints: min max step"
+            help="Range for SMA low as three ints: min max step")
     parser.add_argument(
             "--sma-high-range", nargs=3, type=int, metavar=("LMIN", "LMAX", "LSTEP"),
-            help="Range for SMA low as three ints: min max step"
-
+            help="Range for SMA low as three ints: min max step")
 
     args = parser.parse_args()
 
@@ -121,10 +120,10 @@ def parse_args() -> argparse.Namespace:
     if args.jobs < 1:
         parser.error("--jobs must be >= 1")
 
-
     # Decide mode
-    any_single_args_given = (args.sma_low is not None) or (args.sma_high is not None)
-    any_range_args_given  = (args.sma_low_range is not None) or
+    any_single_args_given = (args.sma_low  is not None) or \
+                            (args.sma_high is not None)
+    any_range_args_given  = (args.sma_low_range  is not None) or \
                             (args.sma_high_range is not None)
 
     # Both single and range arguments provided - error
@@ -290,13 +289,15 @@ def generate_signals(df: pd.DataFrame, short: int, long: int) -> None:
 # File‑level processing
 # ──────────────────────────────────────────────────────────────────────────────
 
-def process_file(path: str, sma_short: int, sma_long: int, out_dir: str) -> Optional[Tuple[str, str]]:
+def process_file(path: str, mode: str, sma_short: int, sma_long: int, out_dir: str) \
+                    -> Optional[Tuple[str, str]]:
     """Process a single file; return (ticker, latest_signal) or None to skip."""
     if os.path.getsize(path) == 0:
         return None  # silently skip empty
 
     df = load_data_from_file(path)
 
+    # Compute SMA
     compute_sma(df, sma_short, sma_long)
 
     generate_signals(df, sma_short, sma_long)
@@ -335,6 +336,16 @@ def main() -> None:
     buys:   List[str] = []
     sells:  List[str] = []
     nos:    List[str] = []
+
+    # Convert single arguments to range to unify processing
+    if args.mode == "single":
+        args.sma_low_range  = [args.sma_low,  args.sma_low,  1]
+        args.sma_high_range = [args.sma_high, args.sma_high, 1]
+
+    print(sma_low_range)
+    print(sma_high_range)
+
+    system.exit()
 
     # Create a “worker” function with most of its parameters already  bound (curried) so that each call only
     # needs the filename.
