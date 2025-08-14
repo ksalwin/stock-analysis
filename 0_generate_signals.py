@@ -200,10 +200,6 @@ def load_data_from_file(path: str) -> pd.DataFrame:
     # Drop the original DATE and TIME columns - replaced by DATETIME
     df = df.drop(columns=["DATE", "TIME"])
 
-    # Columns check (must be before set_index)
-    required = {"TICKER", "DATETIME", "CLOSE"}
-    if not required.issubset(df.columns):
-        raise ValueError(f"File '{path}' missing required columns; found {', '.join(df.columns)}")
 
     # Set index to DATETIME and sort
     df = df.set_index("DATETIME").sort_index()
@@ -252,9 +248,9 @@ def compute_sma(df: pd.DataFrame, sma_range: list[int]) -> None:
     return df.join(sma_df)
 
 
-def generate_signals(df: pd.DataFrame,
-                     short_range: list[int],
-                     long_range:  list[int]
+def add_sma_crossover_signals(df: pd.DataFrame,
+                              sma_short_range: list[int],
+                              sma_long_range:  list[int]
 ) -> dict[tuple[int, int], str]:
     """
     For every (short, long) pair in the given ranges (with short < long),
@@ -271,22 +267,22 @@ def generate_signals(df: pd.DataFrame,
         The most recent label for each (short, long) pair, useful for summaries.
     """
 
-    smin, smax, sstep = short_range
-    lmin, lmax, lstep = long_range
+    smin, smax, sstep = sma_short_range
+    lmin, lmax, lstep = sma_long_range
 
     latest_signal: dict[tuple[int, int], str] = {}
 
-    for short in range(smin, smax + 1, sstep):
-        for long in range(lmin, lmax + 1, lstep):
+    for short_window in range(smin, smax + 1, sstep):
+        for long_window in range(lmin, lmax + 1, lstep):
 
             # Skip invalid pairs
-            if short >= long:
+            if short_window >= long_window:
                 sys.exit()
                 continue
             
             # Names of columns
-            s_col = f"SMA_{short}"
-            l_col = f"SMA_{long}"
+            s_col = f"SMA_{short_window}"
+            l_col = f"SMA_{long_window}"
 
             # Skip pairs if columns not present
             if s_col not in df.columns or l_col not in df.columns:
@@ -296,41 +292,48 @@ def generate_signals(df: pd.DataFrame,
             # Detect where the short SMA is above the long SMA
             # above is a pandas.Series of True / False values that tells, row-by-row,
             # whether the short SMA is currently above the long SMA.
-            short_above_long = df[s_col] > df[l_col]
+            is_short_above_long = df[s_col] > df[l_col]
 
             # Find every time that Boolean changes value. Replace NaN with 0.
             # +1 when 0->1 (cross up), -1 when 1->0 (cross down), 0 otherwise"
-            cross_direction = short_above_long.astype(int).diff().fillna(0)
+            crossover_change = is_short_above_long.astype(int).diff().fillna(0)
 
             # Definition of map: cross direction integers {-1, 1} to human-readable labels 
-            cross_direction_to_signal_map = {1: "Buy", -1: "Sell"}
+            direction_to_signal = {1: "Buy", -1: "Sell"}
 
-            # Map direction to "Buy" ( +1 ) and "Sell" ( -1 ) according to defined map.
-            # Replace 0 as NaN,
-            cross_direction_labels = cross_direction.map(cross_direction_to_signal_map)
-
-            print(cross_direction_labels)
-            sys.exit(1)
+            # Map direction to "Buy" (+1), "Sell" (-1) and NaN (0) according to defined map.
+            # Result is raw signals Buy/Sell/NaN
+            trade_signals_raw = crossover_change.map(direction_to_signal)
 
             # Walk through the Buy/Sell/NaN series row-by-row,
             # turning stretches of NaN into human-readable "No signal (previous was …)" fillers
             # while remembering the last real action.
-            prev = "None"
-            trade_signals: List[str] = []
+            last_signal = "None"
+            trade_signals: list[str] = []
 
-            for label in cross_direction_labels.tolist():
+            for label in trade_signals_raw.tolist():
                 if pd.isna(label):
-                    trade_signals.append(f"No signal (previous was {prev})")
+                    trade_signals.append(f"No sig (prev: {last_signal})")
                 else:
                     trade_signals.append(label)
-                    prev = label
+                    last_signal = label
 
-            sig_col = f"Sig_{short}_{long}"
+            sig_col = f"Sig_{short_window}_{long_window}"
             df[sig_col] = trade_signals
 
-            latest_signal[(short, long)] = trade_signals[-1] if trade_signals else "No signal (prev was None)"
+            # Evaluate latest signal
+            if trade_signals:
+                latest_signal[(short_window, long_window)] = trade_signals[-1]
+            else:
+                latest_signal[(short_window, long_window)] = "No sig (prev: None)"
 
     return latest_signal
+
+def verify_input_data(df: pd.DataFrame) -> None:
+    # Columns check (must be before set_index)
+    required = {"TICKER", "DATETIME", "CLOSE"}
+    if not required.issubset(df.columns):
+        raise ValueError(f"File '{path}' missing required columns; found {', '.join(df.columns)}")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # File‑level processing
@@ -345,19 +348,27 @@ def process_file(path: str,
     if os.path.getsize(path) == 0:
         return None  # silently skip empty
 
+    # Read data from file and preprocess it
     df = load_data_from_file(path)
+
+    verify_input_data(df)
 
     # Compute SMA short and long
     df = compute_sma(df, sma_short_range)
     df = compute_sma(df, sma_long_range)
 
-    generate_signals(df, sma_short_range, sma_long_range)
+    # Add trading signals when SMA short corsses SMA long
+    latest_signal = add_sma_crossover_signals(df, sma_short_range, sma_long_range)
 
-    system.exit()
+    # Get ticker name - will be used as file prefix
+    ticker = os.path.splitext(os.path.basename(path))[0]
 
-    # Write outputs
-    base = os.path.splitext(os.path.basename(path))[0]
-    sig_path = os.path.join(out_dir, f"{base}-{sma_short}-{sma_long}-signals.txt")
+    # Store all data to csv
+    sig_path = os.path.join(out_dir, f"{ticker}-all-data.txt")
+    df.to_csv(sig_path)
+    sys.exit()
+
+
 
     # Filter for Buy/Sell signals only
     filtered_df = df[ df["Signal"].isin(["Buy", "Sell"]) ]
@@ -386,9 +397,9 @@ def main() -> None:
     os.makedirs(args.out_dir, exist_ok=True)
 
     # Prepare data containers
-    buys:   List[str] = []
-    sells:  List[str] = []
-    nos:    List[str] = []
+    buys:   list[str] = []
+    sells:  list[str] = []
+    nos:    list[str] = []
 
     # Convert single arguments to range to unify processing
     if args.mode == "single":
