@@ -211,7 +211,7 @@ def load_data_from_file(path: str) -> pd.DataFrame:
     return df
 
 
-def compute_sma(df: pd.DataFrame, short: int, long: int) -> None:
+def compute_sma(df: pd.DataFrame, sma_range: list[int]) -> None:
     """
     Append short- and long-horizon Simple Moving Averages (SMAs) to *df*.
 
@@ -230,8 +230,26 @@ def compute_sma(df: pd.DataFrame, short: int, long: int) -> None:
     * Values are NaN until the rolling window is fully populated
       (`min_periods` equals the window length).
     """
-    df[f"SMA_{short}"] = df["CLOSE"].rolling(window=short, min_periods=short).mean()
-    df[f"SMA_{long}"]  = df["CLOSE"].rolling(window=long,  min_periods=long ).mean()
+    start, stop, step = sma_range
+
+    # Calculate SMA window lengths
+    sma_windows = range(start, stop + 1, step)
+
+    # Extract close price column
+    price = df["CLOSE"]
+
+    # Calculate SMA and is separate off-frame
+    result_columns = {
+            f"SMA_{window}": price.rolling(window=window, min_periods=window).mean()
+            for window in sma_windows
+    }
+
+    # Create a new DataFrame holding all computed SMA columns,
+    # aligned to the original DataFrame's index for correct joining
+    sma_df = pd.DataFrame(result_columns, index=df.index)
+
+    # Join to main data frame
+    return df.join(sma_df)
 
 
 def generate_signals(df: pd.DataFrame, short: int, long: int) -> None:
@@ -289,7 +307,10 @@ def generate_signals(df: pd.DataFrame, short: int, long: int) -> None:
 # File‑level processing
 # ──────────────────────────────────────────────────────────────────────────────
 
-def process_file(path: str, mode: str, sma_short: int, sma_long: int, out_dir: str) \
+def process_file(path: str,
+                 sma_short_range: list[int],
+                 sma_long_range: list[int],
+                 out_dir: str) \
                     -> Optional[Tuple[str, str]]:
     """Process a single file; return (ticker, latest_signal) or None to skip."""
     if os.path.getsize(path) == 0:
@@ -297,8 +318,13 @@ def process_file(path: str, mode: str, sma_short: int, sma_long: int, out_dir: s
 
     df = load_data_from_file(path)
 
-    # Compute SMA
-    compute_sma(df, sma_short, sma_long)
+    # Compute SMA short and long
+    df = compute_sma(df, sma_short_range)
+    df = compute_sma(df, sma_long_range)
+
+    system.exit()
+
+
 
     generate_signals(df, sma_short, sma_long)
 
@@ -354,8 +380,6 @@ def main() -> None:
         out_dir=args.out_dir
     )
 
-    system.exit()
-
     # Run sequentially or in parallel
     if args.jobs == 1:
         results_iter = map(worker, args.files)
@@ -363,6 +387,7 @@ def main() -> None:
         max_workers = min(args.jobs, os.cpu_count() or 1)
         with cf.ProcessPoolExecutor(max_workers=max_workers) as ex:
             results_iter = ex.map(worker, args.files)
+
 
     for res in results_iter:
         if not res:
