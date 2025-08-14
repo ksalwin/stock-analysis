@@ -173,7 +173,7 @@ def parse_args() -> argparse.Namespace:
 # Data helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def load_data_from_file(path: str) -> pd.DataFrame:
+def load_ohlc_from_file(path: str) -> pd.DataFrame:
     # Read the file (returns data frame)
     df = pd.read_csv(
         path,
@@ -351,7 +351,7 @@ def process_file(path: str,
         return None  # silently skip empty
 
     # Read data from file and preprocess it
-    df = load_data_from_file(path)
+    df = load_ohlc_from_file(path)
 
     # Compute SMA short and long
     df = compute_sma(df, sma_short_range)
