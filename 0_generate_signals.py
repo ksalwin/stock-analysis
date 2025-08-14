@@ -252,56 +252,85 @@ def compute_sma(df: pd.DataFrame, sma_range: list[int]) -> None:
     return df.join(sma_df)
 
 
-def generate_signals(df: pd.DataFrame, short: int, long: int) -> None:
+def generate_signals(df: pd.DataFrame,
+                     short_range: list[int],
+                     long_range:  list[int]
+) -> dict[tuple[int, int], str]:
     """
-    Add a 'Signal' column indicating SMA crossovers.
+    For every (short, long) pair in the given ranges (with short < long),
+    detect SMA crossovers and add a 'Signal_<short>_<long>' column to *df*.
 
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Must contain a 'CLOSE' column.  The DataFrame is modified in place.
-    short : int
-        Window length for the short SMA (e.g. 20).
-    long : int
-        Window length for the long SMA (e.g. 50).
+    Each signal column contains:
+      - 'Buy' at bars where SMA_short crosses above SMA_long,
+      - 'Sell' at bars where SMA_short crosses below SMA_long,
+      - 'No signal (previous was …)' everywhere else.
 
-    Notes
-    -----
-    A 'Buy' is recorded when SMA_short crosses above SMA_long,
-    A 'Sell' when it crosses below, and other rows get a textual 'No signal (previous was …)' marker.
-    The DataFrame is modified in place.
+    Returns
+    -------
+    latest_signal : dict[(short, long) -> str]
+        The most recent label for each (short, long) pair, useful for summaries.
     """
 
-    # Detect where the short SMA is above the long SMA
-    # above is a pandas.Series of True / False values that tells, row-by-row,
-    # whether the short SMA is currently above the long SMA.
-    above = df[f"SMA_{short}"] > df[f"SMA_{long}"]
+    smin, smax, sstep = short_range
+    lmin, lmax, lstep = long_range
 
-    # Find every time that Boolean changes value. Replace NaN with 0.
-    change = above.astype(int).diff().fillna(0)
+    latest_signal: dict[tuple[int, int], str] = {}
 
-    # Map integers {-1, 1} to human-readable labels
-    mapping = {1: "Buy", -1: "Sell"}
+    for short in range(smin, smax + 1, sstep):
+        for long in range(lmin, lmax + 1, lstep):
 
-    # Map to "Buy" ( +1 ) and "Sell" ( -1 ). Replace 0 as NaN,
-    labels = change.map(mapping)     # Pandas Series, not list
+            # Skip invalid pairs
+            if short >= long:
+                sys.exit()
+                continue
+            
+            # Names of columns
+            s_col = f"SMA_{short}"
+            l_col = f"SMA_{long}"
 
-    # Walk through the "Buy"/"Sell"/NaN series row-by-row,
-    # turning stretches of NaN into human-readable "No signal (previous was …)" fillers
-    # while remembering the last real action.
-    prev = "None"
-    final_labels: List[str] = []
+            # Skip pairs if columns not present
+            if s_col not in df.columns or l_col not in df.columns:
+                sys.exit()
+                continue
 
-    for lbl in labels.to_list():    # Iterate once per bar
-        if pd.isna(lbl):            # No crossover on this bar
-            lbl_str = f"No signal (previous was {prev})"
-        else:                       # Got "Buy" or "Sell"
-            lbl_str = lbl
-            prev = lbl
-        final_labels.append(lbl_str)
+            # Detect where the short SMA is above the long SMA
+            # above is a pandas.Series of True / False values that tells, row-by-row,
+            # whether the short SMA is currently above the long SMA.
+            short_above_long = df[s_col] > df[l_col]
 
-    # Add signal column to the DataFrame
-    df["Signal"] = final_labels
+            # Find every time that Boolean changes value. Replace NaN with 0.
+            # +1 when 0->1 (cross up), -1 when 1->0 (cross down), 0 otherwise"
+            cross_direction = short_above_long.astype(int).diff().fillna(0)
+
+            # Definition of map: cross direction integers {-1, 1} to human-readable labels 
+            cross_direction_to_signal_map = {1: "Buy", -1: "Sell"}
+
+            # Map direction to "Buy" ( +1 ) and "Sell" ( -1 ) according to defined map.
+            # Replace 0 as NaN,
+            cross_direction_labels = cross_direction.map(cross_direction_to_signal_map)
+
+            print(cross_direction_labels)
+            sys.exit(1)
+
+            # Walk through the Buy/Sell/NaN series row-by-row,
+            # turning stretches of NaN into human-readable "No signal (previous was …)" fillers
+            # while remembering the last real action.
+            prev = "None"
+            trade_signals: List[str] = []
+
+            for label in cross_direction_labels.tolist():
+                if pd.isna(label):
+                    trade_signals.append(f"No signal (previous was {prev})")
+                else:
+                    trade_signals.append(label)
+                    prev = label
+
+            sig_col = f"Sig_{short}_{long}"
+            df[sig_col] = trade_signals
+
+            latest_signal[(short, long)] = trade_signals[-1] if trade_signals else "No signal (prev was None)"
+
+    return latest_signal
 
 # ──────────────────────────────────────────────────────────────────────────────
 # File‑level processing
@@ -310,8 +339,8 @@ def generate_signals(df: pd.DataFrame, short: int, long: int) -> None:
 def process_file(path: str,
                  sma_short_range: list[int],
                  sma_long_range: list[int],
-                 out_dir: str) \
-                    -> Optional[Tuple[str, str]]:
+                 out_dir: str
+) -> Optional[Tuple[str, str]]:
     """Process a single file; return (ticker, latest_signal) or None to skip."""
     if os.path.getsize(path) == 0:
         return None  # silently skip empty
@@ -322,11 +351,9 @@ def process_file(path: str,
     df = compute_sma(df, sma_short_range)
     df = compute_sma(df, sma_long_range)
 
+    generate_signals(df, sma_short_range, sma_long_range)
+
     system.exit()
-
-
-
-    generate_signals(df, sma_short, sma_long)
 
     # Write outputs
     base = os.path.splitext(os.path.basename(path))[0]
