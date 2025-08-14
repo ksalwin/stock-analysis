@@ -183,6 +183,9 @@ def load_data_from_file(path: str) -> pd.DataFrame:
                "<TIME>"  : "string"}, # Convert ticker to str (without it would be obj)
     )
 
+    # Verify if input data has all needed columns
+    verify_input_data(df, path)
+
     # Remove '<>' from header names
     df.columns = df.columns.str.strip("<>")
 
@@ -199,7 +202,6 @@ def load_data_from_file(path: str) -> pd.DataFrame:
 
     # Drop the original DATE and TIME columns - replaced by DATETIME
     df = df.drop(columns=["DATE", "TIME"])
-
 
     # Set index to DATETIME and sort
     df = df.set_index("DATETIME").sort_index()
@@ -329,10 +331,10 @@ def add_sma_crossover_signals(df: pd.DataFrame,
 
     return latest_signal
 
-def verify_input_data(df: pd.DataFrame) -> None:
-    # Columns check (must be before set_index)
-    required = {"TICKER", "DATETIME", "CLOSE"}
-    if not required.issubset(df.columns):
+def verify_input_data(df: pd.DataFrame, path: str) -> None:
+    # Check columns
+    required_column = {"<TICKER>", "<DATE>", "<TIME>", "<CLOSE>"}
+    if not required_column.issubset(df.columns):
         raise ValueError(f"File '{path}' missing required columns; found {', '.join(df.columns)}")
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -350,8 +352,6 @@ def process_file(path: str,
 
     # Read data from file and preprocess it
     df = load_data_from_file(path)
-
-    verify_input_data(df)
 
     # Compute SMA short and long
     df = compute_sma(df, sma_short_range)
