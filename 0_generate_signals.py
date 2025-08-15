@@ -372,12 +372,12 @@ def process_file(path: str,
 
     # ----- Filter for signals only
     # Drop all `SMA_` columns
-    df.drop(df.filter(like="SMA_").columns, axis=1, inplace=True)
+    df = df.drop(df.filter(like="SMA_").columns, axis=1)
+    # Drop other columns
+    df = df.drop(columns=["PER", "OPEN", "HIGH", "LOW", "VOL", "OPENINT"])
 
     print(df)
     sys.exit(-1)
-
-    filtered_df = df[ df["Signal"].isin(["Buy", "Sell"]) ]
 
     # Keep only columns needed
     filtered_df = filtered_df[["CLOSE", "Signal"]]
