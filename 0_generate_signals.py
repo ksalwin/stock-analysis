@@ -347,7 +347,7 @@ def process_file(path: str,
                  sma_short_range: list[int],
                  sma_long_range: list[int],
                  out_dir: str
-) -> Optional[Tuple[str, str]]:
+) -> None:
     """Process a single file; return (ticker, latest_signal) or None to skip."""
     if os.path.getsize(path) == 0:
         return None  # silently skip empty
@@ -369,8 +369,8 @@ def process_file(path: str,
     ticker = os.path.splitext(os.path.basename(path))[0]
 
     # Store all data to csv
-    file_name_all_data = os.path.join(out_dir, f"{ticker}-all-data.txt")
-    df.to_csv(file_name_all_data, float_format="%.4f")
+    all_data_file_name = os.path.join(out_dir, f"{ticker}-all-data.txt")
+    df.to_csv(all_data_file_name, float_format="%.4f")
 
 
     # ----- Filter for signals only
@@ -379,15 +379,9 @@ def process_file(path: str,
     # Drop other columns
     df = df.drop(columns=["PER", "OPEN", "HIGH", "LOW", "VOL", "OPENINT"])
 
-    print(df)
-    sys.exit(-1)
-
-
-    # Save to csv
-    filtered_df.to_csv(sig_path, index=False)
-
-    # Return last [ticker, signal]
-    return df["TICKER"].iloc[-1], df["Signal"].iloc[-1]
+    # Save signals to csv
+    signals_file_name = os.path.join(out_dir, f"{ticker}-signals.txt")
+    df.to_csv(signals_file_name, float_format="%.4f")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -430,7 +424,11 @@ def main() -> None:
         with cf.ProcessPoolExecutor(max_workers=max_workers) as ex:
             results_iter = ex.map(worker, args.files)
 
+    for result in results_iter:
+        if not result:
+            continue
 
+'''
     for res in results_iter:
         if not res:
             continue
@@ -448,7 +446,7 @@ def main() -> None:
         print("Sell: " + " ".join(sells))
     if args.show_no and nos:
         print("No signal: " + " ".join(nos))
-
+'''
 
 if __name__ == "__main__":
     main()
