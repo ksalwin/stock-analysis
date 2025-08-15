@@ -367,9 +367,9 @@ def process_file(path: str,
 
     # Store all data to csv
     file_name_all_data = os.path.join(out_dir, f"{ticker}-all-data.txt")
-    df.to_csv(file_name_all_data)
+    df.to_csv(file_name_all_data, float_format="%.4f")
 
-    
+
     # ----- Filter for signals only
     # Drop all `SMA_` columns
     df.drop(df.filter(like="SMA_").columns, axis=1, inplace=True)
