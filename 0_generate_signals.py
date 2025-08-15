@@ -280,7 +280,7 @@ def add_sma_crossover_signals(df: pd.DataFrame,
 
             # Skip invalid pairs
             if short_window >= long_window:
-                print("[ERROR] short window > long_window")
+                print("[ERROR] short window >= long_window")
                 sys.exit()
                 continue
             
