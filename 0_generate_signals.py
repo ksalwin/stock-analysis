@@ -209,7 +209,7 @@ def load_ohlc_from_file(path: str) -> pd.DataFrame:
     return df
 
 
-def compute_sma(df: pd.DataFrame, sma_range: list[int]) -> None:
+def compute_sma(df: pd.DataFrame, sma_range: list[int]) -> pd.DataFrame:
     """
     Append short- and long-horizon Simple Moving Averages (SMAs) to *df*.
 
