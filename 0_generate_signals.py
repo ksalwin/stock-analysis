@@ -379,9 +379,6 @@ def process_file(path: str,
     print(df)
     sys.exit(-1)
 
-    # Keep only columns needed
-    filtered_df = filtered_df[["CLOSE", "Signal"]]
-
     # Rename "CLOSE" to "Price"
     filtered_df = filtered_df.rename(columns={"CLOSE": "Price"})
 
