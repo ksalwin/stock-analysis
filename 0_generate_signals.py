@@ -279,6 +279,7 @@ def add_sma_crossover_signals(df: pd.DataFrame,
 
             # Skip invalid pairs
             if short_window >= long_window:
+                print("[ERROR] short window > long_window")
                 sys.exit()
                 continue
             
@@ -288,6 +289,7 @@ def add_sma_crossover_signals(df: pd.DataFrame,
 
             # Skip pairs if columns not present
             if s_col not in df.columns or l_col not in df.columns:
+                print("[ERROR] Columns not present")
                 sys.exit()
                 continue
 
@@ -315,7 +317,7 @@ def add_sma_crossover_signals(df: pd.DataFrame,
 
             for label in trade_signals_raw.tolist():
                 if pd.isna(label):
-                    trade_signals.append(f"No sig (prev: {last_signal})")
+                    trade_signals.append("NaN")
                 else:
                     trade_signals.append(label)
                     last_signal = label
@@ -327,7 +329,7 @@ def add_sma_crossover_signals(df: pd.DataFrame,
             if trade_signals:
                 latest_signal[(short_window, long_window)] = trade_signals[-1]
             else:
-                latest_signal[(short_window, long_window)] = "No sig (prev: None)"
+                latest_signal[(short_window, long_window)] = "NaN"
 
     return latest_signal
 
@@ -357,20 +359,24 @@ def process_file(path: str,
     df = compute_sma(df, sma_short_range)
     df = compute_sma(df, sma_long_range)
 
-    # Add trading signals when SMA short corsses SMA long
+    # Trade signals: add trading signals when SMA short corsses SMA long
     latest_signal = add_sma_crossover_signals(df, sma_short_range, sma_long_range)
 
     # Get ticker name - will be used as file prefix
     ticker = os.path.splitext(os.path.basename(path))[0]
 
     # Store all data to csv
-    sig_path = os.path.join(out_dir, f"{ticker}-all-data.txt")
-    df.to_csv(sig_path)
-    sys.exit()
+    file_name_all_data = os.path.join(out_dir, f"{ticker}-all-data.txt")
+    df.to_csv(file_name_all_data)
 
+    
+    # ----- Filter for signals only
+    # Drop all `SMA_` columns
+    df.drop(df.filter(like="SMA_").columns, axis=1, inplace=True)
 
+    print(df)
+    sys.exit(-1)
 
-    # Filter for Buy/Sell signals only
     filtered_df = df[ df["Signal"].isin(["Buy", "Sell"]) ]
 
     # Keep only columns needed
