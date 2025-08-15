@@ -273,6 +273,7 @@ def add_sma_crossover_signals(df: pd.DataFrame,
     lmin, lmax, lstep = sma_long_range
 
     latest_signal: dict[tuple[int, int], str] = {}
+    signal_columns: dict[str, pd.Series] = {}
 
     for short_window in range(smin, smax + 1, sstep):
         for long_window in range(lmin, lmax + 1, lstep):
@@ -323,13 +324,29 @@ def add_sma_crossover_signals(df: pd.DataFrame,
                     last_signal = label
 
             sig_col = f"Sig_{short_window}_{long_window}"
-            df[sig_col] = trade_signals
+
+            # Create a new pandas Series from the list of generated signals
+            # - trade_signals is a Python list like ["Buy", "No sig (prev: Buy)", ...]
+            # - index=df.index ensures this Series aligns perfectly with the original DataFrame's rows
+            signal_series = pd.Series(trade_signals, index=df.index)
+
+            # Store this Series in a dictionary under the column name (e.g., "Sig_1_80")
+            # - signal_cols will end up mapping {"Sig_1_80": Series, "Sig_1_85": Series, ...}
+            # - Later, we can convert this dict into a DataFrame and add all these columns to df in one go
+            signal_columns[sig_col] = signal_series
 
             # Evaluate latest signal
             if trade_signals:
                 latest_signal[(short_window, long_window)] = trade_signals[-1]
             else:
                 latest_signal[(short_window, long_window)] = "NaN"
+
+    # Join signals with main df
+    if signal_columns:
+        # Create signals data frame
+        signals_df = pd.DataFrame(signal_columns, index=df.index)
+        # Concatenate signals data frame to main data frame
+        df[signals_df.columns] = signals_df
 
     return latest_signal
 
