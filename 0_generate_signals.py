@@ -428,25 +428,6 @@ def main() -> None:
         if not result:
             continue
 
-'''
-    for res in results_iter:
-        if not res:
-            continue
-        ticker, sig = res
-        if sig == "Buy":
-            buys.append(ticker)
-        elif sig == "Sell":
-            sells.append(ticker)
-        else:
-            nos.append(ticker)
-
-    if buys:
-        print("Buy: " + " ".join(buys))
-    if sells:
-        print("Sell: " + " ".join(sells))
-    if args.show_no and nos:
-        print("No signal: " + " ".join(nos))
-'''
 
 if __name__ == "__main__":
     main()
