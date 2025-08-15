@@ -234,7 +234,7 @@ def compute_sma(df: pd.DataFrame, sma_range: list[int]) -> None:
     sma_windows = range(start, stop + 1, step)
 
     # Extract close price column
-    price = df["CLOSE"]
+    price = df["PRICE"]
 
     # Calculate SMA and is separate off-frame
     result_columns = {
@@ -355,6 +355,9 @@ def process_file(path: str,
     # Read data from file and preprocess it
     df = load_ohlc_from_file(path)
 
+    # Close price is the basis for calculation
+    df = df.rename(columns={"CLOSE": "PRICE"})
+
     # Compute SMA short and long
     df = compute_sma(df, sma_short_range)
     df = compute_sma(df, sma_long_range)
@@ -379,8 +382,6 @@ def process_file(path: str,
     print(df)
     sys.exit(-1)
 
-    # Rename "CLOSE" to "Price"
-    filtered_df = filtered_df.rename(columns={"CLOSE": "Price"})
 
     # Save to csv
     filtered_df.to_csv(sig_path, index=False)
