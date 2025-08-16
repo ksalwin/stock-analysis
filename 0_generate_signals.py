@@ -294,10 +294,36 @@ def add_sma_crossover_signals(df: pd.DataFrame,
                 sys.exit()
                 continue
 
-            # Detect where the short SMA is above the long SMA
-            # above is a pandas.Series of True / False values that tells, row-by-row,
-            # whether the short SMA is currently above the long SMA.
-            is_short_above_long = df[s_col] > df[l_col]
+            # Work with the spread; sign(spread) tells the state
+            # spread > 0: short SMA is above long SMA
+            # spread < 0: short SMA is below long SMA
+            # spread ==0: both SMAs are equal
+            #
+            # The sign of spread tells the state:
+            # positive: short above long; negative: short below long
+            #
+            # When the sign changes from negative to positive: Buy signal
+            # When the sign changes from positive to negative: Sell signal
+            #
+            # If one or both are NaN, then spread is NaN
+            spread = df[s_col] - df[l_col]
+
+            # Bar (both SMA data in the same row) is valid if both SMAs exist on that bar (are not NaN)
+            # df[[s_col, l_col]] -> Select SMA short and long columns
+            # .notna() -> Returns True if value is not NaN; else False
+            # .all(axis=1) -> checks across the columns for each row (horizontally)
+            # The result is:
+            # True:  bar is valid
+            # False: bar is invalid
+            valid = df[[s_col, l_col]].notna().all(axis=1)
+
+            # Check if current and previous bar is valid (to detect cross, previous and new value is needed)
+            # .shift() moves the whole series down by one row (row i to i-1)
+            prev_valid = valid & valid.shift(fill_value=False)
+
+
+
+
 
             # Find every time that Boolean changes value. Replace NaN with 0.
             # +1 when 0->1 (cross up), -1 when 1->0 (cross down), 0 otherwise"
