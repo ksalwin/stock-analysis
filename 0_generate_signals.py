@@ -294,7 +294,7 @@ def add_sma_crossover_signals(df: pd.DataFrame,
                 sys.exit()
                 continue
 
-            # Work with the spread; sign(spread) tells the state
+            # Calculate the spread column for all rows (bars); sign (spread) tells the state
             # spread > 0: short SMA is above long SMA
             # spread < 0: short SMA is below long SMA
             # spread ==0: both SMAs are equal
@@ -306,7 +306,10 @@ def add_sma_crossover_signals(df: pd.DataFrame,
             # When the sign changes from positive to negative: Sell signal
             #
             # If one or both are NaN, then spread is NaN
-            spread = df[s_col] - df[l_col]
+            #
+            # spread is one-dimensional vector of numbers, indexed like DataFrame (df)
+            # Keep as series because it is faster for vectorized math
+            spread_vector = df[s_col] - df[l_col]
 
             # Bar (both SMA data in the same row) is valid if both SMAs exist on that bar (are not NaN)
             # df[[s_col, l_col]] -> Select SMA short and long columns
@@ -321,24 +324,19 @@ def add_sma_crossover_signals(df: pd.DataFrame,
             # .shift() moves the whole series down by one row (row i to i-1)
             prev_valid = valid & valid.shift(fill_value=False)
 
+            # Detect buy crossover rows. Type is boolean mask (series), that can be used as indexer
+            # To get all rows with Buy signals, use: df.loc[buy_mask_vector]
+            buy_mask_vector  = (spread_vector > 0) & (spread_vector.shift() <= 0) & prev_valid
+            # Detect sell crossover rows 
+            sell_mask_vector = (spread_vector < 0) & (spread_vector.shift() >= 0) & prev_valid
 
+            # Build pandas Series of signals (object dtype, 1-D labeled array) filled with missing values
+            signal_series = pd.Series(pd.NA, index=df.index, dtype="object")
+            # Set Buy and Sell signals
+            signal_series.loc[buy_mask_vector] = "Buy"
+            signal_series.loc[sell_mask_vector] = "Sell"
 
-
-
-            # Find every time that Boolean changes value. Replace NaN with 0.
-            # +1 when 0->1 (cross up), -1 when 1->0 (cross down), 0 otherwise"
-            crossover_change = is_short_above_long.astype(int).diff().fillna(0)
-
-            # Definition of map: cross direction integers {-1, 1} to human-readable labels 
-            direction_to_signal = {1: "Buy", -1: "Sell"}
-
-            # Map direction to "Buy" (+1), "Sell" (-1) and NaN (0) according to defined map.
-            # Result is raw signals Buy/Sell/NaN
-            trade_signals_raw = crossover_change.map(direction_to_signal)
-
-            # Walk through the Buy/Sell/NaN series row-by-row,
-            # turning stretches of NaN into human-readable "No signal (previous was …)" fillers
-            # while remembering the last real action.
+            '''
             last_signal = "None"
             trade_signals: list[str] = []
 
@@ -348,26 +346,21 @@ def add_sma_crossover_signals(df: pd.DataFrame,
                 else:
                     trade_signals.append(label)
                     last_signal = label
+            '''
 
-            sig_col = f"Sig_{short_window}_{long_window}"
+            signal_column_name = f"Sig_{short_window}_{long_window}"
 
-            # Create a new pandas Series from the list of generated signals
-            # - trade_signals is a Python list like ["Buy", "No sig (prev: Buy)", ...]
-            # - index=df.index ensures this Series aligns perfectly with the original DataFrame's rows
-            signal_series = pd.Series(trade_signals, index=df.index)
+            signal_columns[signal_column_name] = signal_series
 
-            # Store this Series in a dictionary under the column name (e.g., "Sig_1_80")
-            # - signal_cols will end up mapping {"Sig_1_80": Series, "Sig_1_85": Series, ...}
-            # - Later, we can convert this dict into a DataFrame and add all these columns to df in one go
-            signal_columns[sig_col] = signal_series
-
-            # Evaluate latest signal
-            if trade_signals:
-                latest_signal[(short_window, long_window)] = trade_signals[-1]
+            # Get the latest non-NA signal for this pair
+            last_row_signal = signal_series.dropna()
+            if not last_row_signal.empty:
+                latest_signal[(short_window, long_window)] = last_row_signal.iloc[-1]
             else:
                 latest_signal[(short_window, long_window)] = "NaN"
 
     # Join signals with main df
+    # Attach all signal columns at once (keeps original df order; avoids SettingWithCopy)
     if signal_columns:
         # Create signals data frame
         signals_df = pd.DataFrame(signal_columns, index=df.index)
