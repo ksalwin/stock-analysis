@@ -285,16 +285,16 @@ def add_sma_crossover_signals(df: pd.DataFrame,
                 continue
             
             # Names of columns
-            s_col = f"SMA_{short_window}"
-            l_col = f"SMA_{long_window}"
+            short_column_name = f"SMA_{short_window}"
+            long_column_name  = f"SMA_{long_window}"
 
             # Skip pairs if columns not present
-            if s_col not in df.columns or l_col not in df.columns:
+            if short_column_name not in df.columns or long_column_name not in df.columns:
                 print("[ERROR] Columns not present")
                 sys.exit()
                 continue
 
-            # Calculate the spread column for all rows (bars); sign (spread) tells the state
+            # Calculate difference betwen short and long SMA
             # spread > 0: short SMA is above long SMA
             # spread < 0: short SMA is below long SMA
             # spread ==0: both SMAs are equal
@@ -309,7 +309,7 @@ def add_sma_crossover_signals(df: pd.DataFrame,
             #
             # spread is one-dimensional vector of numbers, indexed like DataFrame (df)
             # Keep as series because it is faster for vectorized math
-            spread_vector = df[s_col] - df[l_col]
+            sma_diff_vector = df[short_column_name] - df[long_column_name]
 
             # Bar (both SMA data in the same row) is valid if both SMAs exist on that bar (are not NaN)
             # df[[s_col, l_col]] -> Select SMA short and long columns
@@ -318,17 +318,17 @@ def add_sma_crossover_signals(df: pd.DataFrame,
             # The result is:
             # True:  bar is valid
             # False: bar is invalid
-            valid = df[[s_col, l_col]].notna().all(axis=1)
+            both_smas_valid = df[[short_column_name, long_column_name]].notna().all(axis=1)
 
             # Check if current and previous bar is valid (to detect cross, previous and new value is needed)
             # .shift() moves the whole series down by one row (row i to i-1)
-            prev_valid = valid & valid.shift(fill_value=False)
+            both_smas_valid_prev = both_smas_valid & both_smas_valid.shift(fill_value=False)
 
             # Detect buy crossover rows. Type is boolean mask (series), that can be used as indexer
             # To get all rows with Buy signals, use: df.loc[buy_mask_vector]
-            buy_mask_vector  = (spread_vector > 0) & (spread_vector.shift() <= 0) & prev_valid
+            buy_mask_vector  = (sma_diff_vector > 0) & (sma_diff_vector.shift() <= 0) & both_smas_valid_prev
             # Detect sell crossover rows 
-            sell_mask_vector = (spread_vector < 0) & (spread_vector.shift() >= 0) & prev_valid
+            sell_mask_vector = (sma_diff_vector < 0) & (sma_diff_vector.shift() >= 0) & both_smas_valid_prev
 
             # Build pandas Series of signals (object dtype, 1-D labeled array) filled with missing values
             signal_series = pd.Series(pd.NA, index=df.index, dtype="object")
