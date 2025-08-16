@@ -333,7 +333,7 @@ def add_sma_crossover_signals(df: pd.DataFrame,
             # Build pandas Series of signals (object dtype, 1-D labeled array) filled with missing values
             signal_series = pd.Series(pd.NA, index=df.index, dtype="object")
             # Set Buy and Sell signals
-            signal_series.loc[buy_mask_vector] = "Buy"
+            signal_series.loc[buy_mask_vector]  = "Buy"
             signal_series.loc[sell_mask_vector] = "Sell"
 
             '''
@@ -348,16 +348,15 @@ def add_sma_crossover_signals(df: pd.DataFrame,
                     last_signal = label
             '''
 
+            # Store under a descriptive column name
             signal_column_name = f"Sig_{short_window}_{long_window}"
-
-            signal_columns[signal_column_name] = signal_series
+            df[signal_column_name] = signal_series
 
             # Get the latest non-NA signal for this pair
-            last_row_signal = signal_series.dropna()
-            if not last_row_signal.empty:
-                latest_signal[(short_window, long_window)] = last_row_signal.iloc[-1]
-            else:
-                latest_signal[(short_window, long_window)] = "NaN"
+            last_signal_non_missing = signal_series.dropna()
+            latest_signal[(short_window, long_window)] = (
+                    last_signal_non_missing.iloc[-1] if not last_signal_non_missing.empty else "NaN"
+            )
 
     # Join signals with main df
     # Attach all signal columns at once (keeps original df order; avoids SettingWithCopy)
