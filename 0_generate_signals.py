@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Golden-Cross SMA Signal Generator — Batch & Parallel
+Golden-Cross SMA Signal Generator
 ===================================================
 Generate Buy/Sell signals using a Golden-Cross strategy (SMA_short crossing
 SMA_long) for one or more OHLC CSV text files. Files are processed
@@ -36,22 +36,19 @@ For each input file, writes:
 
 where <base> is the input file name without extension.
 
-Each output file contains only the crossover rows and two columns:
-
-    Price, Signal
-
-with "Price" taken from CLOSE and "Signal" being "Buy" or "Sell".
+Each output file contains only the crossover rows and two columns: "Price" and "Signal".
+"Price" is taken from CLOSE and "Signal" is "Buy" or "Sell".
 
 Console summary
 ---------------
 After processing, prints one-line summaries like:
 
-    Buy: TKR1 TKR2
+    Buy: TKR1, TKR2
     Sell: TKR3
 
 and, if --show-no-signal is given:
 
-    No signal: TKR4 TKR5
+    No signal: TKR4, TKR5
 
 Notes
 -----
@@ -78,6 +75,14 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
             description="Generate Golden‑Cross SMA Buy/Sell signals."
     )
+    """
+    Parse command line arguments.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed command line arguments.
+    """
 
     # Common arguments
     parser.add_argument(
@@ -171,6 +176,29 @@ def parse_args() -> argparse.Namespace:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def load_ohlc_from_file(path: str) -> pd.DataFrame:
+    """
+    Load OHLC data from a file.
+
+    Parameters
+    ----------
+    path : str
+        Path to the input data file.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Loaded OHLC data.
+
+    Notes
+    -----
+    - Reads the file (returns data frame).
+    - Verifies if input data has all needed columns.
+    - Removes '<>' from header names.
+    - Ensures DATE and TIME is the right length.
+    - Combines DATE and TIME to DATETIME.
+    - Sets index to DATETIME and sorts.
+    """
+
     # Read the file (returns data frame)
     df = pd.read_csv(
         path,
@@ -221,8 +249,8 @@ def compute_sma(df: pd.DataFrame, sma_range: list[int]) -> pd.DataFrame:
 
     Notes
     -----
-    * New columns are named 'SMA_<short>' and 'SMA_<long>'.
-    * Values are NaN until the rolling window is fully populated
+    - New columns are named 'SMA_<short>' and 'SMA_<long>'.
+    - Values are NaN until the rolling window is fully populated
       (`min_periods` equals the window length).
     """
     start, stop, step = sma_range
@@ -252,13 +280,24 @@ def add_sma_crossover_signals(df: pd.DataFrame,
                               sma_long_range:  list[int]
 ) -> dict[tuple[int, int], str]:
     """
+    Add SMA crossover signals to DataFrame.
+
     For every (short, long) pair in the given ranges (with short < long),
-    detect SMA crossovers and add a 'Signal_<short>_<long>' column to *df*.
+    detect SMA crossovers and add a 'Signal_<short>_<long>' column to DataFrame.
 
     Each signal column contains:
       - 'Buy' at bars where SMA_short crosses above SMA_long,
       - 'Sell' at bars where SMA_short crosses below SMA_long,
       - 'No signal (previous was …)' everywhere else.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Must contain a 'CLOSE' column. The DataFrame is modified in place.
+    sma_short_range : list[int]
+        Range for SMA short as three ints: min max step
+    sma_long_range : list[int]
+        Range for SMA long as three ints: min max step
 
     Returns
     -------
@@ -266,12 +305,17 @@ def add_sma_crossover_signals(df: pd.DataFrame,
         The most recent label for each (short, long) pair, useful for summaries.
     """
 
-    smin, smax, sstep = sma_short_range
-    lmin, lmax, lstep = sma_long_range
+    # Unpack input arguments tuple
+    (smin, smax, sstep) = sma_short_range
+    (lmin, lmax, lstep) = sma_long_range
 
+    # Initialize dictionary to store latest signal for each (short, long) pair
     latest_signal: dict[tuple[int, int], str] = {}
+
+    # Initialize dictionary to store signal columns
     signal_columns: dict[str, pd.Series] = {}
 
+    # Iterate over all (short, long) pairs in the given ranges
     for short_window in range(smin, smax + 1, sstep):
         for long_window in range(lmin, lmax + 1, lstep):
 
@@ -334,6 +378,7 @@ def add_sma_crossover_signals(df: pd.DataFrame,
             signal_series.loc[sell_mask_vector] = "Sell"
 
             '''
+            # Optional code to convert NaN to "NaN"
             last_signal = "None"
             trade_signals: list[str] = []
 
@@ -366,7 +411,30 @@ def add_sma_crossover_signals(df: pd.DataFrame,
     return latest_signal
 
 def verify_input_data(df: pd.DataFrame, path: str) -> None:
-    # Check columns
+    """
+    Check if input data has all needed columns.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Data frame to check.
+    path : str
+        Path to the input data file.
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    ValueError
+        If any of the required columns are missing.
+
+    Notes
+    -----   
+    - Required columns are: "<TICKER>", "<DATE>", "<TIME>", "<CLOSE>".
+    - If any of the required columns are missing, raises a ValueError.
+    """
     required_column = {"<TICKER>", "<DATE>", "<TIME>", "<CLOSE>"}
     if not required_column.issubset(df.columns):
         raise ValueError(f"File '{path}' missing required columns; found {', '.join(df.columns)}")
@@ -380,9 +448,30 @@ def process_file(path: str,
                  sma_long_range: list[int],
                  out_dir: str
 ) -> None:
-    """Process a single file; return (ticker, latest_signal) or None to skip."""
+    """
+    Process a single file.
+
+    Parameters
+    ----------
+    path : str
+        Path to the input data file.
+    sma_short_range : list[int]
+        Range for SMA short as three ints: min max step
+    sma_long_range : list[int]
+        Range for SMA long as three ints: min max step
+    out_dir : str
+        Root output directory
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    - Empty input files are skipped silently.
+    """
     if os.path.getsize(path) == 0:
-        return None  # silently skip empty
+        return None  # silently skip empty files
 
     # Read data from file and preprocess it
     df = load_ohlc_from_file(path)
@@ -405,7 +494,7 @@ def process_file(path: str,
     df.to_csv(all_data_file_name, float_format="%.4f")
 
 
-    # ----- Filter for signals only
+    # ----- Filter for signals only -----
     # Drop all `SMA_` columns
     df = df.drop(df.filter(like="SMA_").columns, axis=1)
     # Drop other columns
@@ -421,6 +510,21 @@ def process_file(path: str,
 # ──────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    """
+    Main function.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    - Parses command line arguments.
+    - Creates output directory.
+    - Converts single arguments to range to unify processing.
+    - Creates a worker function with most of its parameters already bound.
+    - Runs sequentially or in parallel.
+    """
     args = parse_args()
 
     # Create output directory
