@@ -429,11 +429,6 @@ def main() -> None:
     # Create output directory
     os.makedirs(args.out_dir, exist_ok=True)
 
-    # Prepare data containers
-    buys:   list[str] = []
-    sells:  list[str] = []
-    nos:    list[str] = []
-
     # Convert single arguments to range to unify processing
     if args.mode == "single":
         args.sma_short_range = [args.sma_short, args.sma_short, 1]
