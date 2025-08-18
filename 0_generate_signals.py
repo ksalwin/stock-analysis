@@ -61,17 +61,14 @@ Notes
 - Uses a process pool when --jobs > 1 to parallelize per-file work.
 """
 
-from __future__ import annotations
-
 import argparse
-import concurrent.futures as cf
-from functools import partial
 import os
-import sys
-from typing import List, Optional, Tuple
-
-import numpy as np
 import pandas as pd
+import sys
+
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
+from typing import List, Optional, Tuple
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CLI parsing
@@ -448,16 +445,16 @@ def main() -> None:
 
     # Run sequentially or in parallel
     if args.jobs == 1 or len(args.files) == 1:
-        results_iter = map(worker, args.files)
+        for result in map(worker, args.files):
+            if not result:
+                continue
     else:
         max_workers = min(args.jobs, os.cpu_count() or 1)
-        with cf.ProcessPoolExecutor(max_workers=max_workers) as pool_executor:
-            results_iter = pool_executor.map(worker, args.files)
 
-    for result in results_iter:
-        if not result:
-            continue
-
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            for result in executor.map(worker, args.files):
+                if not result:
+                    continue
 
 if __name__ == "__main__":
     main()
