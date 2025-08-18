@@ -79,14 +79,13 @@ def plot_sma_and_signals(df: pd.DataFrame, sma_short: int, sma_long: int, n_xtic
 
     # Signals (supports text Buy/Sell or numeric +/-1)
     if sig_col is not None:
+        # Get all signals from the signal column
         sigs = df[sig_col]
-        if pd.api.types.is_numeric_dtype(sigs):
-            buy_mask = sigs > 0
-            sell_mask = sigs < 0
-        else:
-            s = sigs.astype("string").str.lower()
-            buy_mask = s.eq("buy")
-            sell_mask = s.eq("sell")
+        
+        # Get buy and sell signals
+        s = sigs.astype("string").str.lower()
+        buy_mask = s.eq("buy")
+        sell_mask = s.eq("sell")
 
         if buy_mask.any() and price_col in df:
             ax.scatter(df.index[buy_mask], df.loc[buy_mask, price_col],
