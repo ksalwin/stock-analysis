@@ -456,8 +456,8 @@ def main() -> None:
         results_iter = map(worker, args.files)
     else:
         max_workers = min(args.jobs, os.cpu_count() or 1)
-        with cf.ProcessPoolExecutor(max_workers=max_workers) as ex:
-            results_iter = ex.map(worker, args.files)
+        with cf.ProcessPoolExecutor(max_workers=max_workers) as pool_executor:
+            results_iter = pool_executor.map(worker, args.files)
 
     for result in results_iter:
         if not result:
