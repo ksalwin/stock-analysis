@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-signals_report.py – analyse **one or many** Buy/Sell signal files and create text summary reports, now with optional **parallel jobs**.
+signals_report.py – analyse **one or many** Buy/Sell signal files and create text summary reports.
 
 (No plotting – the script only generates output files.)
 
@@ -25,8 +25,6 @@ python signals_report.py out/*-signals.txt
 # Directory search with glob pattern (recursive, 8 parallel jobs)
 python signals_report.py -d out -p "*-signals.txt" -r --jobs 8 --pairs --print
 """
-
-from __future__ import annotations
 
 import argparse
 import csv
