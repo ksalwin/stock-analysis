@@ -447,7 +447,7 @@ def main() -> None:
     )
 
     # Run sequentially or in parallel
-    if args.jobs == 1:
+    if args.jobs == 1 or len(args.files) == 1:
         results_iter = map(worker, args.files)
     else:
         max_workers = min(args.jobs, os.cpu_count() or 1)
