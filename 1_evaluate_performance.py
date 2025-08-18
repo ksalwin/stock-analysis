@@ -20,7 +20,7 @@ Generated parameters
 USAGE examples
 --------------
 # Explicit file list (sequential)
-python signals_report.py out/*/*-signals.txt
+python signals_report.py out/*-signals.txt
 
 # Directory search with glob pattern (recursive, 8 parallel jobs)
 python signals_report.py -d out -p "*-signals.txt" -r --jobs 8 --pairs --print
@@ -49,8 +49,10 @@ def parse_args() -> argparse.Namespace:
     )
 
     # Search parameters (renamed)
-    parser.add_argument("-d", "--dir", default=".", metavar="PATH", help="directory to search (default: current directory)")
-    parser.add_argument("-p", "--pattern", default="*-signals.txt", metavar="GLOB", help='glob pattern to match (default: "*-signals.txt")')
+    parser.add_argument("-d", "--dir", default=".", metavar="PATH",
+                        help="directory to search (default: current directory)")
+    parser.add_argument("-p", "--pattern", default="*-signals.txt", metavar="GLOB",
+                        help='glob file pattern to match (default: "*-signals.txt")')
     parser.add_argument("-r", "--recursive", action="store_true", help="search sub‑directories recursively")
 
     # Processing & output options
@@ -59,7 +61,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pairs", action="store_true", help="include Buy‑Sell pair list in report")
 
     # Positional list of files (overrides search)
-    parser.add_argument("input_files", nargs="*", help="explicit paths to *-signals.txt files; overrides directory search")
+    parser.add_argument("input_files", nargs="*",
+                        help="explicit paths to *-signals.txt files; overrides directory search")
 
     return parser.parse_args()
 
@@ -160,7 +163,7 @@ def process_file(path: Path, include_pairs: bool) -> Tuple[Path, List[str]]:
 def main() -> None:
     args = parse_args()
 
-    # Resolve files
+    # Resolve files - if input_files is provided, use it, otherwise find files in the directory
     if args.input_files:
         paths: List[Path] = [Path(p).expanduser().resolve() for p in args.input_files]
     else:
