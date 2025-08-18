@@ -208,35 +208,18 @@ def main() -> None:
     if not os.path.exists(args.out_dir):
         os.makedirs(args.out_dir)
 
-    # Resolve files - if input_files is provided, use it, otherwise find files in the directory
-    if args.input_files:
-        paths: List[Path] = [Path(p).expanduser().resolve() for p in args.input_files]
+    # Run sequentially
+    if args.jobs == 1 or len(args.files) == 1:
+        for _ in map(process_file, args.files, args.pairs):
+            pass
+    # Run in parallel
     else:
-        found = file_finder.find_files(args.dir, args.pattern, args.recursive)
-        paths = [Path(p).expanduser().resolve() for p in found]
-
-    if not paths:
-        parser.error("No matching input files found.")
-
-    # Run processing (if possible, in parallel)
-    if args.jobs == 1 or len(paths) == 1:
-        for p in paths:
-            path, lines = process_file(p, args.pairs)
-            if args.do_print:
-                print(f"\n=== {path} ===\n" + "\n".join(lines))
-    # Process in parallel
-    else:
-        # Get the number of workers to use
         max_workers = min(args.jobs, os.cpu_count() or 1)
-        with ProcessPoolExecutor(max_workers=max_workers) as pool_executor:
-            # Submit the tasks to the pool executor
-            futures = {pool_executor.submit(process_file, p, args.pairs): p for p in paths}
-            # Wait for the tasks to complete
-            for future in as_completed(futures):
-                # Get the result of the task
-                path, lines = future.result()
-                if args.do_print:
-                    print(f"\n=== {path} ===\n" + "\n".join(lines))
+
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # executor.map() returns an iterator, not a list
+            for _ in executor.map(process_file, args.files, args.pairs):
+                pass
 
 
 if __name__ == "__main__":
