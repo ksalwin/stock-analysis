@@ -336,19 +336,19 @@ def add_sma_crossover_signals(df: pd.DataFrame,
                 continue
 
             # Calculate difference betwen short and long SMA
-            # spread > 0: short SMA is above long SMA
-            # spread < 0: short SMA is below long SMA
-            # spread ==0: both SMAs are equal
+            # sma_diff > 0: short SMA is above long SMA
+            # sma_diff < 0: short SMA is below long SMA
+            # sma_diff ==0: both SMAs are equal
             #
-            # The sign of spread tells the state:
+            # The sign of sma_diff tells the state:
             # positive: short above long; negative: short below long
             #
             # When the sign changes from negative to positive: Buy signal
             # When the sign changes from positive to negative: Sell signal
             #
-            # If one or both are NaN, then spread is NaN
+            # If one or both are NaN, then sma_diff is NaN
             #
-            # spread is one-dimensional vector of numbers, indexed like DataFrame (df)
+            # sma_diff is one-dimensional vector of numbers, indexed like DataFrame (df)
             # Keep as series because it is faster for vectorized math
             sma_diff_vector = df[short_column_name] - df[long_column_name]
 
@@ -361,7 +361,7 @@ def add_sma_crossover_signals(df: pd.DataFrame,
             # False: bar is invalid
             both_smas_valid = df[[short_column_name, long_column_name]].notna().all(axis=1)
 
-            # Check if current and previous bar is valid (to detect cross, previous and new value is needed)
+            # Check if current and previous bar are valid (to detect cross, previous and new value is needed)
             # .shift() moves the whole series down by one row (row i to i-1)
             both_smas_valid_prev = both_smas_valid & both_smas_valid.shift(fill_value=False)
 
