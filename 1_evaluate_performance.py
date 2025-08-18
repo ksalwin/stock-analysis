@@ -71,7 +71,24 @@ def parse_args() -> argparse.Namespace:
 # ────────────────────────────────────────────────────────────────────────────────
 
 def read_signals(fname: Path) -> List[dict]:
-    """Read a CSV‑like text file into a list of dictionaries."""
+    """
+    Read a CSV‑like text file into a list of dictionaries.
+    The file is expected to have the following columns:
+    - DATE: date of the signal
+    - Price: price of the asset
+    - Signal: signal type (Buy or Sell)
+
+    PARAMETERS
+    ----------
+    fname: Path
+        The path to the file to read
+
+    RETURNS
+    -------
+    List[dict]
+        A list of dictionaries, each containing the date, price, and signal of a signal
+    """
+    # Open the file
     with fname.open(newline="") as f:
         rdr = csv.DictReader(f)
         return [
@@ -135,7 +152,7 @@ def analyse(data: List[dict], include_pairs: bool) -> List[str]:
             f"Number of positive / breakeven trades:     {pos_cnt}",
             f"Number of negative trades:                 {neg_cnt}",
             f"Total positive / breakeven PnL (≥0):       {pos_tot:.4f}",
-            f"Total negative PnL (<0):                  {neg_tot:.4f}",
+            f"Total negative PnL (<0):                   {neg_tot:.4f}",
             f"Difference (positive – |negative|):        {diff:.4f}",
             f"Win rate [%]:                              {win_rate:.2f}",
             f"Average win / loss:                        {avg_win_loss:.4f}",
@@ -150,8 +167,11 @@ def analyse(data: List[dict], include_pairs: bool) -> List[str]:
 # ────────────────────────────────────────────────────────────────────────────────
 
 def process_file(path: Path, include_pairs: bool) -> Tuple[Path, List[str]]:
+    # Read the signals from the file
     data = read_signals(path)
+    # Analyse the signals
     report_lines = analyse(data, include_pairs)
+    # Write the report to a file
     out_file = path.with_name(path.stem + "-report" + path.suffix)
     out_file.write_text("\n".join(report_lines))
     return path, report_lines
@@ -173,18 +193,23 @@ def main() -> None:
     if not paths:
         parser.error("No matching input files found.")
 
-    # Run processing (possibly in parallel)
+    # Run processing (if possible, in parallel)
     if args.jobs == 1 or len(paths) == 1:
         for p in paths:
             path, lines = process_file(p, args.pairs)
             if args.do_print:
                 print(f"\n=== {path} ===\n" + "\n".join(lines))
+    # Process in parallel
     else:
+        # Get the number of workers to use
         max_workers = min(args.jobs, os.cpu_count() or 1)
-        with ProcessPoolExecutor(max_workers=max_workers) as pool:
-            futures = {pool.submit(process_file, p, args.pairs): p for p in paths}
-            for fut in as_completed(futures):
-                path, lines = fut.result()
+        with ProcessPoolExecutor(max_workers=max_workers) as pool_executor:
+            # Submit the tasks to the pool executor
+            futures = {pool_executor.submit(process_file, p, args.pairs): p for p in paths}
+            # Wait for the tasks to complete
+            for future in as_completed(futures):
+                # Get the result of the task
+                path, lines = future.result()
                 if args.do_print:
                     print(f"\n=== {path} ===\n" + "\n".join(lines))
 
