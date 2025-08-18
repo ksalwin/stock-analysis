@@ -445,16 +445,14 @@ def main() -> None:
 
     # Run sequentially or in parallel
     if args.jobs == 1 or len(args.files) == 1:
-        for result in map(worker, args.files):
-            if not result:
-                continue
+        for _ in map(worker, args.files):
+            pass
     else:
         max_workers = min(args.jobs, os.cpu_count() or 1)
 
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            for result in executor.map(worker, args.files):
-                if not result:
-                    continue
+            for _ in executor.map(worker, args.files):
+                pass
 
 if __name__ == "__main__":
     main()
