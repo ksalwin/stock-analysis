@@ -130,7 +130,7 @@ def plot_sma_and_signals(df: pd.DataFrame, sma_short: int, sma_long: int, n_xtic
     # Set labels
     ax.set_xlabel("DATETIME")
     ax.set_ylabel("Price")
-    
+
     # Set grid
     # True means the grid is shown
     # alpha is the transparency of the grid
