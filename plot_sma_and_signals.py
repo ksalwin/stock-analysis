@@ -63,14 +63,8 @@ def plot_sma_and_signals(df: pd.DataFrame, sma_short: int, sma_long: int, n_xtic
     sma_short_col = f"SMA_{sma_short}"
     sma_long_col  = f"SMA_{sma_long}"
 
-    # Choose a signal column if present (supports Sig_short_long or Sig_long_short)
-    sig_candidates = [f"Sig_{sma_short}_{sma_long}", f"Sig_{sma_long}_{sma_short}"]
-    sig_col = next((c for c in sig_candidates if c in df.columns), None)
-
-    # Ensure index is datetime
-    if not isinstance(df.index, pd.DatetimeIndex):
-        df = df.copy()
-        df.index = pd.to_datetime(df.index)
+    # Choose a signal column
+    sig_col = f"Sig_{sma_short}_{sma_long}"
 
     # Plot
     fig, ax = plt.subplots()
