@@ -83,16 +83,33 @@ def plot_sma_and_signals(df: pd.DataFrame, sma_short: int, sma_long: int, n_xtic
         sigs = df[sig_col]
         
         # Get buy and sell signals
+        # Convert to string and lowercase
         s = sigs.astype("string").str.lower()
+
+        # Get buy and sell signals
         buy_mask = s.eq("buy")
         sell_mask = s.eq("sell")
 
+        # Plot buy signal 
         if buy_mask.any() and price_col in df:
-            ax.scatter(df.index[buy_mask], df.loc[buy_mask, price_col],
-                       marker="^", s=60, label="Buy", zorder=3)
+            ax.scatter( df.index[buy_mask],         # is the datetime at the buy signals
+                        df.loc[buy_mask, price_col],# is the price at the buy signals
+                        marker="^",                 # marker for the buy signals
+                        s=60,                       # size of the buy signals
+                        edgecolors="black",         # edge color of the buy signals
+                        label="Buy",                # label for the buy signals
+                        zorder=3)                   # zorder for the buy signals
+            # zorder is the order of the plot. The higher the zorder, the on top of the plot.
+
+        # Plot sell signal
         if sell_mask.any() and price_col in df:
-            ax.scatter(df.index[sell_mask], df.loc[sell_mask, price_col],
-                       marker="v", s=60, label="Sell", zorder=3)
+            ax.scatter( df.index[sell_mask],         # is the datetime at the sell signals
+                        df.loc[sell_mask, price_col],# is the price at the sell signals
+                        marker="v",                 # is the marker for the sell signals
+                        s=60,                       # is the size of the sell signals
+                        edgecolors="black",         # edge color of the sell signals
+                        label="Sell",               # is the label for the sell signals
+                        zorder=3)                   # is the zorder for the sell signals
 
     # === Exactly ~10 x-axis labels ===
     # Pick ~10 evenly spaced tick locations across the data range
