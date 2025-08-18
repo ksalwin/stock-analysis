@@ -547,11 +547,12 @@ def main() -> None:
         out_dir=args.out_dir
     )
 
-    # Run sequentially or in parallel
+    # Run sequentially
     if args.jobs == 1 or len(args.files) == 1:
         # map() returns an iterator, not a list
         for _ in map(worker, args.files):
             pass
+    # Run in parallel
     else:
         max_workers = min(args.jobs, os.cpu_count() or 1)
 
