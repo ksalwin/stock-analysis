@@ -29,11 +29,11 @@ python signals_report.py -d out -p "*-signals.txt" -r --jobs 8 --pairs --print
 import argparse
 import csv
 import os
+
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import List, Tuple
-
 from py_utils import file_finder
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -41,26 +41,35 @@ from py_utils import file_finder
 # ────────────────────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
+    """
+    Parse command line arguments.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed command line arguments.
+    """
     parser = argparse.ArgumentParser(
-        description="Generate signal reports (text‑only) – accept explicit files or search a directory.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+            description="Generate signal reports (text‑only)."
     )
 
-    # Search parameters (renamed)
-    parser.add_argument("-d", "--dir", default=".", metavar="PATH",
-                        help="directory to search (default: current directory)")
-    parser.add_argument("-p", "--pattern", default="*-signals.txt", metavar="GLOB",
-                        help='glob file pattern to match (default: "*-signals.txt")')
-    parser.add_argument("-r", "--recursive", action="store_true", help="search sub‑directories recursively")
+    parser.add_argument(
+            "--out-dir", default="out/",
+            help="Root output directory (default: current)")
 
     # Processing & output options
-    parser.add_argument("--jobs", type=int, default=1, help="number of parallel jobs/processes (default 1)")
-    parser.add_argument("--print", dest="do_print", action="store_true", help="print statistics to console")
-    parser.add_argument("--pairs", action="store_true", help="include Buy‑Sell pair list in report")
+    parser.add_argument(
+            "--jobs", type=int, default=1,
+            help="number of parallel jobs/processes (default 1)")
+    parser.add_argument(
+            "--pairs", action="store_true",
+            help="include Buy‑Sell pair list in report")
+    parser.add_argument(
+            "--print", dest="do_print", action="store_true",
+            help="print statistics to console")
 
-    # Positional list of files (overrides search)
-    parser.add_argument("input_files", nargs="*",
-                        help="explicit paths to *-signals.txt files; overrides directory search")
+    parser.add_argument("files", nargs="*",
+                        help="explicit paths to *-allsignals.txt files")
 
     return parser.parse_args()
 
@@ -179,7 +188,25 @@ def process_file(path: Path, include_pairs: bool) -> Tuple[Path, List[str]]:
 # ────────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    """
+    Main function.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    - Parses command line arguments.
+    - Finds input files.
+    - Processes files sequentially or in parallel.
+    - Prints results to console if --print is set.
+    """
     args = parse_args()
+
+    # Create output directory if it doesn't exist
+    if not os.path.exists(args.out_dir):
+        os.makedirs(args.out_dir)
 
     # Resolve files - if input_files is provided, use it, otherwise find files in the directory
     if args.input_files:
