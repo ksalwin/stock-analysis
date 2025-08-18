@@ -29,12 +29,13 @@ python signals_report.py -d out -p "*-signals.txt" -r --jobs 8 --pairs --print
 import argparse
 import csv
 import os
+import pandas as pd
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import List, Tuple
-from py_utils import file_finder
+
 
 # ────────────────────────────────────────────────────────────────────────────────
 # CLI parsing
@@ -77,9 +78,9 @@ def parse_args() -> argparse.Namespace:
 # Core analytics helpers
 # ────────────────────────────────────────────────────────────────────────────────
 
-def read_signals(fname: Path) -> List[dict]:
+def read_signals(fname: Path) -> pd.DataFrame:
     """
-    Read a CSV‑like text file into a list of dictionaries.
+    Read a CSV‑like text file into a pandas DataFrame.
     The file is expected to have the following columns:
     - DATE: date of the signal
     - Price: price of the asset
@@ -92,24 +93,35 @@ def read_signals(fname: Path) -> List[dict]:
 
     RETURNS
     -------
-    List[dict]
-        A list of dictionaries, each containing the date, price, and signal of a signal
+    pd.DataFrame
+        A DataFrame with columns "DATE", "Price", and "Signal"
     """
-    # Open the file
-    with fname.open(newline="") as f:
-        rdr = csv.DictReader(f)
-        return [
-            {
-                "date": datetime.strptime(row["DATE"], "%Y-%m-%d"),
-                "price": float(row["Price"]),
-                "signal": row["Signal"].strip(),
-            }
-            for row in rdr
-        ]
+    return pd.read_csv(fname)
 
 
-def analyse(data: List[dict], include_pairs: bool) -> List[str]:
-    """Return report lines (optionally including individual Buy‑Sell pairs)."""
+def analyse(df: pd.DataFrame, include_pairs: bool) -> List[str]:
+    """
+    Analyze the signals and return a list of report lines.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame with columns "DATE", "Price", and "Signal"
+    include_pairs : bool
+        Whether to include the Buy‑Sell pair list in the report.
+
+    Returns
+    -------
+    List[str]
+        The list of report lines.
+
+    Notes
+    -----
+    - Calculates the total positive and negative PnL.
+    - Calculates the number of positive and negative trades.
+    - Calculates the average win and loss.
+    - Calculates the profit factor and expectancy.
+    """
     lines: List[str] = []
     pos_tot = neg_tot = 0.0
     pos_cnt = neg_cnt = 0
@@ -120,14 +132,14 @@ def analyse(data: List[dict], include_pairs: bool) -> List[str]:
         lines.extend(["Buy‑Sell pairs and differences", "-" * 60])
 
     i = 0
-    while i < len(data) - 1:
-        if data[i]["signal"] == "Buy" and data[i + 1]["signal"] == "Sell":
-            buy, sell = data[i], data[i + 1]
-            pnl = sell["price"] - buy["price"]
+    while i < len(df) - 1:
+        if df.iloc[i]["Signal"] == "Buy" and df.iloc[i + 1]["Signal"] == "Sell":
+            buy, sell = df.iloc[i], df.iloc[i + 1]
+            pnl = sell["Price"] - buy["Price"]
             if include_pairs:
                 lines.append(
-                    f"{buy['date'].date()} @ {buy['price']:.4f} → "
-                    f"{sell['date'].date()} @ {sell['price']:.4f} = {pnl:.4f}"
+                    f"{buy['DATE'].date()} @ {buy['Price']:.4f} → "
+                    f"{sell['DATE'].date()} @ {sell['Price']:.4f} = {pnl:.4f}"
                 )
             if pnl >= 0:
                 pos_tot += pnl
@@ -174,13 +186,38 @@ def analyse(data: List[dict], include_pairs: bool) -> List[str]:
 # ────────────────────────────────────────────────────────────────────────────────
 
 def process_file(path: Path, include_pairs: bool) -> Tuple[Path, List[str]]:
+    """
+    Process a single file.
+
+    Parameters
+    ----------
+    path : Path
+        The path to the file to process.
+    include_pairs : bool
+        Whether to include the Buy‑Sell pair list in the report.
+
+    Returns
+    -------
+    Tuple[Path, List[str]]
+        The path to the file and the list of report lines.
+
+    Notes
+    -----
+    - Reads the signals from the file.
+    - Analyzes the signals.
+    - Writes the report to a file.
+    """
     # Read the signals from the file
     data = read_signals(path)
+
     # Analyse the signals
     report_lines = analyse(data, include_pairs)
+
     # Write the report to a file
     out_file = path.with_name(path.stem + "-report" + path.suffix)
     out_file.write_text("\n".join(report_lines))
+
+    # Return the path and the report lines
     return path, report_lines
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -198,8 +235,8 @@ def main() -> None:
     Notes
     -----
     - Parses command line arguments.
-    - Finds input files.
-    - Processes files sequentially or in parallel.
+    - Creates output directory if it doesn't exist.
+    - Runs sequentially or in parallel.
     - Prints results to console if --print is set.
     """
     args = parse_args()
@@ -220,7 +257,6 @@ def main() -> None:
             # executor.map() returns an iterator, not a list
             for _ in executor.map(process_file, args.files, args.pairs):
                 pass
-
 
 if __name__ == "__main__":
     main()
