@@ -111,14 +111,20 @@ def plot_sma_and_signals(df: pd.DataFrame, sma_short: int, sma_long: int, n_xtic
                         label="Sell",               # is the label for the sell signals
                         zorder=3)                   # is the zorder for the sell signals
 
-    # === Exactly ~10 x-axis labels ===
-    # Pick ~10 evenly spaced tick locations across the data range
+    # Set 10 evenly spaced tick labels across the data range
     if len(df.index) > 0:
-        k = min(n_xticks, len(df.index))
-        tick_idx = np.linspace(0, len(df.index) - 1, k).astype(int)
+        # Get the number of ticks to show
+        number_of_ticks = min(n_xticks, len(df.index))
+        # Get the indices of the ticks
+        # linspace(start, stop, num) returns num evenly spaced samples,
+        # calculated over the interval [start, stop].
+        tick_idx = np.linspace(0, len(df.index) - 1, number_of_ticks).astype(int)
+        # Get the locations of the ticks
         tick_locs = df.index[tick_idx]
+        # Set the ticks on the x-axis
         ax.set_xticks(tick_locs)
-        # Compact date labels
+        # Set the tick labels
+        # strftime("%Y-%m-%d") formats the datetime as YYYY-MM-DD
         ax.set_xticklabels([d.strftime("%Y-%m-%d") for d in tick_locs], rotation=0)
 
     # Set labels
@@ -126,6 +132,7 @@ def plot_sma_and_signals(df: pd.DataFrame, sma_short: int, sma_long: int, n_xtic
     ax.set_ylabel("Price")
     
     # Set grid
+    # True means the grid is shown
     # alpha is the transparency of the grid
     ax.grid(True, alpha=0.3)
 
