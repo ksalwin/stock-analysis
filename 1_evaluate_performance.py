@@ -102,10 +102,8 @@ def read_signals(path: Path) -> pd.DataFrame:
             path,
             parse_dates=["DATETIME"],   # parse the DATETIME column as a datetime object
             index_col="DATETIME",       # set the DATETIME column as the index
-            dtype={
-                "TICKER": "string",
-                "PER": "category"
-            },
+            dtype={"TICKER": "string",
+                   "PER"   : "category"},
             # low_memory=False,         # uncomment if you see dtypes errors
             #na_values=["", "NA", "NaN"]# optional: explicit NA markers (empty fields already -> NaN)
     )
