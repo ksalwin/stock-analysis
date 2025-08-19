@@ -33,6 +33,7 @@ import pandas as pd
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import List, Tuple
 
@@ -63,7 +64,7 @@ def parse_args() -> argparse.Namespace:
             "--jobs", type=int, default=1,
             help="number of parallel jobs/processes (default 1)")
     parser.add_argument(
-            "--pairs", action="store_true",
+            "--include-pairs", action="store_true",
             help="include Buy‑Sell pair list in report")
     parser.add_argument(
             "--print", dest="do_print", action="store_true",
@@ -255,9 +256,18 @@ def main() -> None:
     if not os.path.exists(args.out_dir):
         os.makedirs(args.out_dir)
 
+    # Create a “worker” function with most of its parameters already  bound (curried) so that each call only
+    # needs the filename.
+    #   process_file(...)   – user-defined function that processes one CSV or JSON
+    #   include_pairs       – whether to include the Buy‑Sell pair list in the report
+    worker = partial(
+        process_file,
+        include_pairs=args.include_pairs
+    )
+
     # Run sequentially
     if args.jobs == 1 or len(args.files) == 1:
-        for _ in map(process_file, args.files, args.pairs):
+        for _ in map(worker, args.files):
             pass
     # Run in parallel
     else:
@@ -265,7 +275,7 @@ def main() -> None:
 
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             # executor.map() returns an iterator, not a list
-            for _ in executor.map(process_file, args.files, args.pairs):
+            for _ in executor.map(worker, args.files):
                 pass
 
 if __name__ == "__main__":
