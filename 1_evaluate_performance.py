@@ -78,25 +78,37 @@ def parse_args() -> argparse.Namespace:
 # Core analytics helpers
 # ────────────────────────────────────────────────────────────────────────────────
 
-def read_signals(fname: Path) -> pd.DataFrame:
+def read_signals(path: Path) -> pd.DataFrame:
     """
     Read a CSV‑like text file into a pandas DataFrame.
     The file is expected to have the following columns:
-    - DATE: date of the signal
-    - Price: price of the asset
-    - Signal: signal type (Buy or Sell)
+    - DATETIME: date and time of the signal
+    - TICKER: ticker of the asset
+    - PER: period of the signal
+    - SMA_: Simple Moving Average
+    - SIG_x_y: signal type (Buy or Sell) for SMA_x vs SMA_y
 
     PARAMETERS
     ----------
-    fname: Path
+    path: Path
         The path to the file to read
 
     RETURNS
     -------
     pd.DataFrame
-        A DataFrame with columns "DATE", "Price", and "Signal"
+        A DataFrame with columns "DATETIME", "TICKER", "PER", "SMA_", and "SIG_x_y"
     """
-    return pd.read_csv(fname)
+    return pd.read_csv(
+            path,
+            parse_dates=["DATETIME"],   # parse the DATETIME column as a datetime object
+            index_col="DATETIME",       # set the DATETIME column as the index
+            dtype={
+                "TICKER": "string",
+                "PER": "category"
+            },
+            # low_memory=False,         # uncomment if you see dtypes errors
+            #na_values=["", "NA", "NaN"]# optional: explicit NA markers (empty fields already -> NaN)
+    )
 
 
 def analyse(df: pd.DataFrame, include_pairs: bool) -> List[str]:
