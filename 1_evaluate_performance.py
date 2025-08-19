@@ -106,7 +106,7 @@ def read_signals(path: Path) -> pd.DataFrame:
             dtype={"TICKER": "string",
                    "PER"   : "category"},
             # low_memory=False,         # uncomment if you see dtypes errors
-            #na_values=["", "NA", "NaN"]# optional: explicit NA markers (empty fields already -> NaN)
+            # na_values=["", "NA", "NaN"]# optional: explicit NA markers (empty fields already -> NaN)
     )
 
 
@@ -123,25 +123,30 @@ def analyse(df: pd.DataFrame, include_pairs: bool) -> List[str]:
 
     Returns
     -------
-    List[str]
-        The list of report lines.
-
-    Notes
-    -----
-    - Calculates the total positive and negative PnL.
-    - Calculates the number of positive and negative trades.
-    - Calculates the average win and loss.
-    - Calculates the profit factor and expectancy.
+    pandas.DataFrame
+        A DataFrame with the following columns:
+        - "POS_CNT": number of positive trades
+        - "NEG_CNT": number of negative trades
+        - "POS_PnL": total positive PnL
+        - "NEG_PnL": total negative PnL
+        - "NET_PnL": difference (positive – |negative|)
+        - "WIN_RATE": win rate [%]
+        - "AVG_WIN_LOSS": average win / loss
+        - "PROFIT_FACTOR": profit factor
+        - "EXPECTANCY": expectancy per trade
     """
+    # Initialize counters and lists
     lines: List[str] = []
     pos_tot = neg_tot = 0.0
     pos_cnt = neg_cnt = 0
     pos_trades: List[float] = []
     neg_trades: List[float] = []
 
+    # Add header if include_pairs is True
     if include_pairs:
         lines.extend(["Buy‑Sell pairs and differences", "-" * 60])
 
+    # Iterate through the DataFrame
     i = 0
     while i < len(df) - 1:
         if df.iloc[i]["Signal"] == "Buy" and df.iloc[i + 1]["Signal"] == "Sell":
