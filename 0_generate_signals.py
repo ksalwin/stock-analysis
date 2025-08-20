@@ -486,23 +486,28 @@ def process_file(path: str,
     # Trade signals: add trading signals when SMA short corsses SMA long
     latest_signal = add_sma_crossover_signals(df, sma_short_range, sma_long_range)
 
-    # Get ticker name - will be used as file prefix
-    ticker = os.path.splitext(os.path.basename(path))[0]
-
-    # Store all data to csv
-    all_data_file_name = os.path.join(out_dir, f"{ticker}-all-data.txt")
-    df.to_csv(all_data_file_name, float_format="%.4f")
-
-
-    # ----- Filter for signals only -----
     # Drop all `SMA_` columns
     df = df.drop(df.filter(like="SMA_").columns, axis=1)
     # Drop other columns
     df = df.drop(columns=["PER", "OPEN", "HIGH", "LOW", "VOL", "OPENINT"])
 
+    # Get ticker name - will be used as file prefix
+    ticker = os.path.splitext(os.path.basename(path))[0]
+
+    # Store all data to csv
+    all_data_file_name = os.path.join(out_dir, f"{ticker}-signals.txt")
+    df.to_csv(all_data_file_name, float_format="%.4f")
+
+
+    # ----- Filter for signals only -----
+    # Drop all `SMA_` columns
+    #df = df.drop(df.filter(like="SMA_").columns, axis=1)
+    # Drop other columns
+    #df = df.drop(columns=["PER", "OPEN", "HIGH", "LOW", "VOL", "OPENINT"])
+
     # Save signals to csv
-    signals_file_name = os.path.join(out_dir, f"{ticker}-signals.txt")
-    df.to_csv(signals_file_name, float_format="%.4f")
+    #signals_file_name = os.path.join(out_dir, f"{ticker}-signals.txt")
+    #df.to_csv(signals_file_name, float_format="%.4f")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
