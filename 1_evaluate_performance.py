@@ -59,20 +59,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
             "--out-dir", default="out/",
             help="Root output directory (default: out/)")
-
-    # Processing & output options
     parser.add_argument(
             "--jobs", type=int, default=1,
             help="number of parallel jobs/processes (default 1)")
     parser.add_argument(
-            "--include-pairs", action="store_true",
-            help="include Buy‑Sell pair list in report")
-    parser.add_argument(
-            "--print", dest="do_print", action="store_true",
-            help="print statistics to console")
-
-    parser.add_argument("files", nargs="*",
-                        help="explicit paths to *-allsignals.txt files")
+            "files", nargs="*",
+            help="explicit paths to *-allsignals.txt files")
 
     return parser.parse_args()
 
@@ -282,7 +274,7 @@ def analyse(signals_df: pd.DataFrame) -> pd.DataFrame:
 # Worker function (for parallel execution)
 # ────────────────────────────────────────────────────────────────────────────────
 
-def process_file(path: Path) -> Tuple[Path, List[str]]:
+def process_file(path: Path) -> Tuple[Path, pd.DataFrame]:
     """
     Process a single file.
 
@@ -290,13 +282,11 @@ def process_file(path: Path) -> Tuple[Path, List[str]]:
     ----------
     path : Path
         The path to the file to process.
-    include_pairs : bool
-        Whether to include the Buy‑Sell pair list in the report.
 
     Returns
     -------
-    Tuple[Path, List[str]]
-        The path to the file and the list of report lines.
+    Tuple[Path, pd.DataFrame]
+        The path to the file and the DataFrame with the report.
 
     Notes
     -----
