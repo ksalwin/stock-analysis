@@ -98,7 +98,7 @@ def read_signals(path: Path) -> pd.DataFrame:
             index_col="DATETIME",       # set the DATETIME column as the index
             dtype={"TICKER": "string",
                    "PER"   : "category"},
-            # low_memory=False,         # uncomment if you see dtypes errors
+            low_memory=False,         # uncomment if you see dtypes errors
             # na_values=["", "NA", "NaN"]# optional: explicit NA markers (empty fields already -> NaN)
     )
 
@@ -305,7 +305,7 @@ def process_file(path: Path) -> Tuple[Path, pd.DataFrame]:
 
     # Write the report to a file
     out_file = path.with_name(path.stem + "-report" + path.suffix)
-    output_df.to_csv(out_file)
+    output_df.to_csv(out_file, float_format="%.4f")
 
     # Return the path and the report lines
     return path, output_df
