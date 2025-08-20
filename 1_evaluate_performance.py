@@ -28,6 +28,7 @@ python signals_report.py -d out -p "*-signals.txt" -r --jobs 8 --pairs --print
 
 import argparse
 import csv
+import numpy as np
 import os
 import pandas as pd
 
@@ -35,7 +36,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict,List,Tuple
 
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -57,7 +58,7 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
             "--out-dir", default="out/",
-            help="Root output directory (default: current)")
+            help="Root output directory (default: out/)")
 
     # Processing & output options
     parser.add_argument(
@@ -110,21 +111,27 @@ def read_signals(path: Path) -> pd.DataFrame:
     )
 
 
-def analyse(df: pd.DataFrame, include_pairs: bool) -> List[str]:
+def analyse(signals_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Analyze the signals and return a list of report lines.
+    Analyze Buy/Sell signals contained in *signals_df* and compute per‑signal
+    performance metrics. Returns a DataFrame with one row per signal column.
+
+    Expected columns
+    ----------------
+    - PRICE (preferred) or CLOSE – used for entry/exit prices
+    - One or more signal columns named 'Sig_<short>_<long>' (case insensitive),
+      containing "Buy"/"Sell" on crossover bars and NaN elsewhere.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        The DataFrame with columns "DATE", "Price", and "Signal"
-    include_pairs : bool
-        Whether to include the Buy‑Sell pair list in the report.
+    signals_df : pd.DataFrame
+        Input data with prices and signal columns.
 
     Returns
     -------
-    pandas.DataFrame
-        A DataFrame with the following columns:
+    pd.DataFrame
+        Index: signal column name (e.g., 'Sig_20_100')
+        Columns:
         - "POS_CNT": number of positive trades
         - "NEG_CNT": number of negative trades
         - "POS_PnL": total positive PnL
@@ -134,74 +141,148 @@ def analyse(df: pd.DataFrame, include_pairs: bool) -> List[str]:
         - "AVG_WIN_LOSS": average win / loss
         - "PROFIT_FACTOR": profit factor
         - "EXPECTANCY": expectancy per trade
+    
+    Notes
+    -----
+    - Strategy evaluated here is a simple long-only pairing: enter on "Buy",
+      exit on the next "Sell". Sells before the first Buy are ignored.
+    - Breakeven trades (PnL == 0) are counted as positive for POS_CNT.
     """
-    # Initialize counters and lists
-    lines: List[str] = []
-    pos_tot = neg_tot = 0.0
-    pos_cnt = neg_cnt = 0
-    pos_trades: List[float] = []
-    neg_trades: List[float] = []
+    # Always use PRICE column for entry/exit prices
+    prices = pd.to_numeric(signals_df["PRICE"], errors="coerce")         # 1-D Series of floats aligned to the DataFrame index
+    
+    # Detect all signal columns like "Sig_20_100"
+    sig_cols = [c for c in signals_df.columns if c.startswith("Sig_")]  # filter only signal columns generated upstream
 
-    # Add header if include_pairs is True
-    if include_pairs:
-        lines.extend(["Buy‑Sell pairs and differences", "-" * 60])
+    # If there are no signal columns, return an empty result table with the right schema.
+    if not sig_cols:
+        return pd.DataFrame(                                               # create an empty frame with expected columns and no rows
+            columns=[
+                "POS_CNT", "NEG_CNT", "POS_PnL", "NEG_PnL",
+                "NET_PnL", "WIN_RATE", "AVG_WIN_LOSS", "PROFIT_FACTOR", "EXPECTANCY",
+            ],
+            dtype="float64",                                               # numeric types by default
+        )
 
-    # Iterate through the DataFrame
-    i = 0
-    while i < len(df) - 1:
-        if df.iloc[i]["Signal"] == "Buy" and df.iloc[i + 1]["Signal"] == "Sell":
-            buy, sell = df.iloc[i], df.iloc[i + 1]
-            pnl = sell["Price"] - buy["Price"]
-            if include_pairs:
-                lines.append(
-                    f"{buy['DATE'].date()} @ {buy['Price']:.4f} → "
-                    f"{sell['DATE'].date()} @ {sell['Price']:.4f} = {pnl:.4f}"
-                )
-            if pnl >= 0:
-                pos_tot += pnl
-                pos_cnt += 1
-                pos_trades.append(pnl)
-            else:
-                neg_tot += pnl
-                neg_cnt += 1
-                neg_trades.append(pnl)
-            i += 2
+    # Prepare a list of per-signal metric rows; we will assemble a DataFrame at the end.
+    rows: list[dict] = []                                                  # each element will be a dict of metrics for one Sig_* column
+
+    # Compute metrics per signal column.
+    # Iterate each "Sig_<short>_<long>" column independently
+    for sig_name in sig_cols:                                              
+        # Store as pandas StringDtype for safe comparisons incl. NaN
+        sig_series = signals_df[sig_name].astype("string")
+        open_entry_time = None
+        open_entry_price = None
+        # Collect PnL for each completed Buy→Sell pair
+        trade_pnls: list[float] = []
+
+        # Walk forward in time once; pair each Buy with the *next* Sell.
+        # Iterate in chronological index order: (timestamp, "Buy"/"Sell"/<NA>)
+        for ts, label in sig_series.items():
+            # Skip rows without a signal; nothing to do
+            if pd.isna(label):                                             
+                continue
+
+            # Entry condition: go long at the Buy bar's price (close/price column)
+            if label == "Buy":                                             
+                # Only open a new position if we are flat; repeated "Buy" before a "Sell" is ignored.
+                if open_entry_time is None:                                # we’re flat — can open a long
+                    # Price at the Buy bar; may be NaN (we’ll guard below)
+                    entry_price = prices.loc[ts]                           
+                    # Only accept valid numeric prices
+                    if pd.notna(entry_price):                              
+                        # Remember when we entered
+                        open_entry_time = ts                               
+                        # and at what price
+                        open_entry_price = float(entry_price)              
+                # else: already long; ignore extra Buy until a Sell closes the trade
+
+            # Exit condition: close long at the Sell bar's price
+            elif label == "Sell":                                          
+                # Only close if there is an open long
+                if open_entry_time is not None:                            
+                    # Price at the Sell bar
+                    exit_price = prices.loc[ts]                           
+                    # Ensure both entry and exit prices are valid
+                    if pd.notna(exit_price) and pd.notna(open_entry_price):
+                        # Raw PnL in price units (breakeven allowed)
+                        pnl = float(exit_price) - float(open_entry_price)  
+                        # Store this completed trade’s result
+                        trade_pnls.append(pnl)                             
+                    # Whether we could compute PnL or not, the position is considered closed on Sell.
+                    open_entry_time = None      # flat after a Sell
+                    open_entry_price = None     # clear the stored entry price
+                # else: Sell without a preceding Buy — ignore (no open position to close)
+
+        # At the end of the series, if we still have an open Buy, it remains unmatched → ignore (no closing Sell).
+        # Now compute statistics from the collected trade PnLs for this signal column.
+        total_trades = len(trade_pnls)                                     # Number of completed Buy→Sell pairs
+        pos_pnls = [p for p in trade_pnls if p >= 0.0]                     # Non-negative outcomes (breakeven counts as a “win”)
+        neg_pnls = [p for p in trade_pnls if p <  0.0]                     # Strictly negative outcomes
+
+        pos_cnt = float(len(pos_pnls))                                     # Convert to float for consistent dtype downstream
+        neg_cnt = float(len(neg_pnls))
+        pos_sum = float(sum(pos_pnls)) if pos_pnls else 0.0                # Sum positive PnL (0.0 if none)
+        neg_sum = float(sum(neg_pnls)) if neg_pnls else 0.0                # Sum negative PnL (≤ 0.0; 0.0 if none)
+        net_sum = pos_sum + neg_sum                                        # net PnL across all trades
+
+        # Win rate is the fraction of non-negative trades.
+        win_rate = (pos_cnt / total_trades * 100.0) if total_trades > 0 else np.nan
+
+        # Average win / loss ratio:
+        #   mean(positive PnL) / mean(|negative PnL|)
+        avg_win = (pos_sum / pos_cnt) if pos_cnt > 0 else np.nan           # mean win (NaN if no winners)
+        avg_loss_abs = (abs(neg_sum) / neg_cnt) if neg_cnt > 0 else np.nan # mean loss magnitude (NaN if no losers)
+        if pos_cnt > 0 and neg_cnt > 0:
+            avg_win_loss = avg_win / avg_loss_abs                          # finite ratio when both sides exist
+        elif pos_cnt > 0 and neg_cnt == 0:
+            avg_win_loss = np.inf                                          # no losses → ratio tends to infinity
+        elif pos_cnt == 0 and neg_cnt > 0:
+            avg_win_loss = 0.0                                             # no wins → ratio is 0
         else:
-            i += 1
+            avg_win_loss = np.nan                                          # no trades at all
 
-    total_trades = pos_cnt + neg_cnt
-    diff = pos_tot - abs(neg_tot)
+        # Profit factor is Σ wins / |Σ losses|.
+        if abs(neg_sum) > 0.0:
+            profit_factor = pos_sum / abs(neg_sum)                         # Finite value when both sides exist
+        elif pos_sum > 0.0:
+            profit_factor = np.inf                                         # Wins but no losses → infinite PF
+        elif total_trades > 0:
+            profit_factor = 0.0                                            # Only losses or all zero PnL → PF 0
+        else:
+            profit_factor = np.nan                                         # No trades at all
 
-    win_rate = (pos_cnt / total_trades * 100) if total_trades else 0.0
-    avg_win = sum(pos_trades) / pos_cnt if pos_cnt else 0.0
-    avg_loss = abs(sum(neg_trades) / neg_cnt) if neg_cnt else 0.0
-    avg_win_loss = (avg_win / avg_loss) if avg_loss else float("inf") if avg_win else 0.0
-    profit_factor = (pos_tot / abs(neg_tot)) if neg_tot else float("inf") if pos_tot else 0.0
-    expectancy = diff / total_trades if total_trades else 0.0
+        # Expectancy per trade is net PnL averaged over the number of trades.
+        expectancy = (net_sum / total_trades) if total_trades > 0 else np.nan
 
-    if include_pairs:
-        lines.append("-" * 60)
+        # Assemble the metrics for this signal column into one row.
+        rows.append({
+            "SIG_x_y": sig_name,                                           # keep the signal column name to set as index later
+            "POS_CNT": pos_cnt,
+            "NEG_CNT": neg_cnt,
+            "POS_PnL": pos_sum,
+            "NEG_PnL": neg_sum,
+            "NET_PnL": net_sum,
+            "WIN_RATE": win_rate,
+            "AVG_WIN_LOSS": avg_win_loss,
+            "PROFIT_FACTOR": profit_factor,
+            "EXPECTANCY": expectancy,
+        })
 
-    lines.extend(
-        [
-            f"Number of positive / breakeven trades:     {pos_cnt}",
-            f"Number of negative trades:                 {neg_cnt}",
-            f"Total positive / breakeven PnL (≥0):       {pos_tot:.4f}",
-            f"Total negative PnL (<0):                   {neg_tot:.4f}",
-            f"Difference (positive – |negative|):        {diff:.4f}",
-            f"Win rate [%]:                              {win_rate:.2f}",
-            f"Average win / loss:                        {avg_win_loss:.4f}",
-            f"Profit factor:                             {profit_factor:.4f}",
-            f"Expectancy per trade:                      {expectancy:.4f}",
-        ]
-    )
-    return lines
+    # Turn the list of dicts into a DataFrame.
+    # Shape: (num_signals, 10 columns including "SIG_x_y")
+    output_df = pd.DataFrame(rows)
+    # Index by signal name (e.g., "Sig_20_100") as requested
+    output_df = output_df.set_index("SIG_x_y")
+
+    return output_df     
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Worker function (for parallel execution)
 # ────────────────────────────────────────────────────────────────────────────────
 
-def process_file(path: Path, include_pairs: bool) -> Tuple[Path, List[str]]:
+def process_file(path: Path) -> Tuple[Path, List[str]]:
     """
     Process a single file.
 
@@ -223,18 +304,21 @@ def process_file(path: Path, include_pairs: bool) -> Tuple[Path, List[str]]:
     - Analyzes the signals.
     - Writes the report to a file.
     """
+    # Ensure path is a Path object
+    path = Path(path)
+
     # Read the signals from the file
     data = read_signals(path)
 
     # Analyse the signals
-    report_lines = analyse(data, include_pairs)
+    output_df = analyse(data)
 
     # Write the report to a file
     out_file = path.with_name(path.stem + "-report" + path.suffix)
-    out_file.write_text("\n".join(report_lines))
+    output_df.to_csv(out_file, index=False)
 
     # Return the path and the report lines
-    return path, report_lines
+    return path, output_df
 
 # ────────────────────────────────────────────────────────────────────────────────
 # CLI entry‑point
@@ -264,15 +348,13 @@ def main() -> None:
     # Create a “worker” function with most of its parameters already  bound (curried) so that each call only
     # needs the filename.
     #   process_file(...)   – user-defined function that processes one CSV or JSON
-    #   include_pairs       – whether to include the Buy‑Sell pair list in the report
     worker = partial(
-        process_file,
-        include_pairs=args.include_pairs
+        process_file
     )
 
     # Run sequentially
     if args.jobs == 1 or len(args.files) == 1:
-        for _ in map(worker, args.files):
+        for _ in map(process_file, args.files):
             pass
     # Run in parallel
     else:
@@ -280,7 +362,7 @@ def main() -> None:
 
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             # executor.map() returns an iterator, not a list
-            for _ in executor.map(worker, args.files):
+            for _ in executor.map(process_file, args.files):
                 pass
 
 if __name__ == "__main__":
