@@ -315,7 +315,7 @@ def process_file(path: Path) -> Tuple[Path, List[str]]:
 
     # Write the report to a file
     out_file = path.with_name(path.stem + "-report" + path.suffix)
-    output_df.to_csv(out_file, index=False)
+    output_df.to_csv(out_file)
 
     # Return the path and the report lines
     return path, output_df
