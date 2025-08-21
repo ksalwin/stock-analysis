@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Plot SMA‑grid metrics from one or many CSV files.
+Plot metrics from one or many CSV files.
 
 Features
 --------
@@ -39,27 +39,94 @@ def parse_args() -> argparse.Namespace:
     """Return parsed CLI arguments."""
     parser = argparse.ArgumentParser(description="Plot SMA‑grid metrics from files.")
 
+    # Positional arguments
     parser.add_argument(
-        "--type",
-        choices=["2d", "3d", "heatmap", "surface"],
-        default="2d",
+        "input_file", type=Path, help="input file",
+    )
+
+    # Required arguments
+    parser.add_argument(
+        "--type", choices=["2d", "3d", "heatmap", "surface"], default="2d",
         help="plot type: 2d (default), 3d, heatmap, surface",
+    )
+    parser.add_argument(
+        "--x-col", required=True,
+        help="column to use for X values (2-D and 3-D/heatmap/surface)"
+    )
+    parser.add_argument(
+        "--y-col", required=True,
+        help="column to use for Y values (2-D and 3-D/heatmap/surface)"
+    )
+    
+    # Optional arguments
+    parser.add_argument(
+        "--z-col",
+        help="column to use for Z values (3-D/heatmap/surface). Ignored for 2-D unless legacy mode."
     )
 
     parser.add_argument(
-        "--output",
-        type=Path,
+        "--output", type=Path,
         help="optional filename to save the plot instead of displaying it",
     )
 
-    parser.add_argument(
-        "input_files",
-        type=Path,
-        nargs="+",
-        help="input file(s)",
-    )
+    # Miscellaneous arguments
+    
 
     return parser.parse_args()
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Data helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def read_csv(
+    path: Path,
+    x_col: str,
+    y_col: str,
+    z_col: str | None = None
+) -> tuple[pd.Series, pd.Series, pd.Series | None]:
+    """
+    Read a CSV file and return the data for the x, y and z columns.
+
+    Parameters
+    ----------
+    path : Path
+        The path to the CSV file.
+    x_col : str
+        The name of the column to use for the x-axis.
+    y_col : str
+        The name of the column to use for the y-axis.
+    z_col : str | None
+        (Optional) The name of the column to use for the z-axis.
+
+    Returns
+    -------
+    tuple[pd.Series, pd.Series, pd.Series | None]
+        The data for the x, y and z columns. If z_col is None, the third element is None.
+    """
+
+    # Read the CSV file
+    df = pd.read_csv(path)
+
+    # Verify that the file has the required columns
+    if x_col in df.columns:
+        x_data = df[x_col]
+    else:
+        raise ValueError(f"Column {x_col} not found in {path}")
+
+    if y_col in df.columns:
+        y_data = df[y_col]
+    else:
+        raise ValueError(f"Column {y_col} not found in {path}")
+
+    if z_col and z_col in df.columns:
+        z_data = df[z_col]
+    else:
+        raise ValueError(f"Column {z_col} not found in {path}")
+
+    # Return the DataFrame
+    return x_data, y_data, z_data
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Plot helpers
@@ -340,7 +407,11 @@ def plot_data(
 
 def main() -> None:
     args = parse_args()
-    plot_data(args.input_files, args.type, args.output)
+
+    # Read data from input file
+    df = read_csv(args.input_file, args.x_col, args.y_col, args.z_col)
+
+    plot_data(df, args.type, args.output)
 
 if __name__ == "__main__":
     main()
