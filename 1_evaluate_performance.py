@@ -122,8 +122,9 @@ def analyse(signals_df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Index: signal column name (e.g., 'Sig_20_100')
         Columns:
+        - "SMA_short": short SMA period
+        - "SMA_long": long SMA period
         - "POS_CNT": number of positive trades
         - "NEG_CNT": number of negative trades
         - "POS_PnL": total positive PnL
@@ -157,7 +158,7 @@ def analyse(signals_df: pd.DataFrame) -> pd.DataFrame:
         )
 
     # Prepare a list of per-signal metric rows; we will assemble a DataFrame at the end.
-    rows: list[dict] = []                                                  # each element will be a dict of metrics for one Sig_* column
+    rows: list[dict] = [] # each element will be a dict of metrics for one Sig_* column
 
     # Compute metrics per signal column.
     # Iterate each "Sig_<short>_<long>" column independently
@@ -248,9 +249,15 @@ def analyse(signals_df: pd.DataFrame) -> pd.DataFrame:
         # Expectancy per trade is net PnL averaged over the number of trades.
         expectancy = (net_sum / total_trades) if total_trades > 0 else np.nan
 
+        # Extract x and y from the signal column name
+        # Sig_20_100 -> 20, 100
+        # Sig_10_30  -> 10, 30
+        _, sma_short, sma_long = sig_name.split("_", 2)
+
         # Assemble the metrics for this signal column into one row.
         rows.append({
-            "SIG_x_y": sig_name,                                           # keep the signal column name to set as index later
+            "SMA_short": sma_short,
+            "SMA_long": sma_long,
             "POS_CNT": pos_cnt,
             "NEG_CNT": neg_cnt,
             "POS_PnL": pos_sum,
@@ -263,10 +270,11 @@ def analyse(signals_df: pd.DataFrame) -> pd.DataFrame:
         })
 
     # Turn the list of dicts into a DataFrame.
-    # Shape: (num_signals, 10 columns including "SIG_x_y")
+    # Shape: (num_signals, 10 columns including "SMA_short" and "SMA_long")
     output_df = pd.DataFrame(rows)
-    # Index by signal name (e.g., "Sig_20_100") as requested
-    output_df = output_df.set_index("SIG_x_y")
+
+    # Set the index to "SMA_short" and "SMA_long"
+    output_df = output_df.set_index(["SMA_short", "SMA_long"])
 
     return output_df     
 
@@ -274,7 +282,7 @@ def analyse(signals_df: pd.DataFrame) -> pd.DataFrame:
 # Worker function (for parallel execution)
 # ────────────────────────────────────────────────────────────────────────────────
 
-def process_file(path: Path) -> Tuple[Path, pd.DataFrame]:
+def process_file(path: Path) -> None:
     """
     Process a single file.
 
@@ -307,9 +315,6 @@ def process_file(path: Path) -> Tuple[Path, pd.DataFrame]:
     out_file = path.with_name(path.stem + "-report" + path.suffix)
     output_df.to_csv(out_file, float_format="%.4f")
 
-    # Return the path and the report lines
-    return path, output_df
-
 # ────────────────────────────────────────────────────────────────────────────────
 # CLI entry‑point
 # ────────────────────────────────────────────────────────────────────────────────
@@ -335,12 +340,6 @@ def main() -> None:
     if not os.path.exists(args.out_dir):
         os.makedirs(args.out_dir)
 
-    # Create a “worker” function with most of its parameters already  bound (curried) so that each call only
-    # needs the filename.
-    #   process_file(...)   – user-defined function that processes one CSV or JSON
-    worker = partial(
-        process_file
-    )
 
     # Run sequentially
     if args.jobs == 1 or len(args.files) == 1:
