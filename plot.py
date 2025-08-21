@@ -46,31 +46,27 @@ def parse_args() -> argparse.Namespace:
 
     # Required arguments
     parser.add_argument(
-        "--type", choices=["2d", "3d", "heatmap", "surface"], default="2d",
-        help="plot type: 2d (default), 3d, heatmap, surface",
+        "--type", choices=["3d", "heatmap", "surface"], default="surface",
+        help="plot type: 3d, heatmap, surface (default)",
     )
     parser.add_argument(
-        "--x-col", required=True,
+        "--x-col", default="SMA_short",
         help="column to use for X values (2-D and 3-D/heatmap/surface)"
     )
     parser.add_argument(
-        "--y-col", required=True,
+        "--y-col", default="SMA_long",
         help="column to use for Y values (2-D and 3-D/heatmap/surface)"
     )
-    
-    # Optional arguments
     parser.add_argument(
-        "--z-col",
-        help="column to use for Z values (3-D/heatmap/surface). Ignored for 2-D unless legacy mode."
+        "--z-col", default="PROFIT_FACTOR",
+        help="column to use for Z values (3-D/heatmap/surface)"
     )
 
+    # Optional arguments
     parser.add_argument(
         "--output", type=Path,
         help="optional filename to save the plot instead of displaying it",
     )
-
-    # Miscellaneous arguments
-    
 
     return parser.parse_args()
 
@@ -83,8 +79,8 @@ def read_csv(
     path: Path,
     x_col: str,
     y_col: str,
-    z_col: str | None = None
-) -> tuple[pd.Series, pd.Series, pd.Series | None]:
+    z_col: str
+) -> tuple[pd.Series, pd.Series, pd.Series]:
     """
     Read a CSV file and return the data for the x, y and z columns.
 
@@ -96,13 +92,13 @@ def read_csv(
         The name of the column to use for the x-axis.
     y_col : str
         The name of the column to use for the y-axis.
-    z_col : str | None
-        (Optional) The name of the column to use for the z-axis.
+    z_col : str
+        The name of the column to use for the z-axis.
 
     Returns
     -------
     tuple[pd.Series, pd.Series, pd.Series | None]
-        The data for the x, y and z columns. If z_col is None, the third element is None.
+        The data for the x, y and z columns.
     """
 
     # Read the CSV file
@@ -119,13 +115,10 @@ def read_csv(
     else:
         raise ValueError(f"Column {y_col} not found in {path}")
 
-    if z_col is not None:
-        if z_col in df.columns:
-            z_data = df[z_col]
-        else:
-            raise ValueError(f"Column {z_col} not found in {path} and is required for the chosen plot type.")
+    if z_col in df.columns:
+        z_data = df[z_col]
     else:
-        z_data = None
+        raise ValueError(f"Column {z_col} not found in {path} and is required for the chosen plot type.")
 
     # Return the DataFrame
     return x_data, y_data, z_data
@@ -278,109 +271,50 @@ def plot_heatmap(
     return fig, ax
 
 def plot_surface(
-    data: pd.DataFrame,
     x_col: str,
+    x_data: pd.Series,
     y_col: str,
+    y_data: pd.Series,
     z_col: str,
-) -> tuple[plt.Figure, Axes3D]:
-    """Return a 3‑D **surface** plot.
+    z_data: pd.Series,
+) -> tuple[plt.Figure, plt.Axes]:
+    """Plot a 3D surface plot."""
 
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Input data containing *x_col*, *y_col* and *z_col*.
-    x_col, y_col, z_col : str
-        Column names to use for X (rows), Y (columns) and the Z value plotted.
+    # Build a DataFrame from the three series and ensure numeric types
+    df = pd.DataFrame({x_col: x_data, y_col: y_data, z_col: z_data})
+    df = df.dropna(subset=[x_col, y_col, z_col])
+    df[x_col] = pd.to_numeric(df[x_col], errors="coerce")
+    df[y_col] = pd.to_numeric(df[y_col], errors="coerce")
+    df[z_col] = pd.to_numeric(df[z_col], errors="coerce")
+    df = df.dropna(subset=[x_col, y_col, z_col])
 
-    Returns
-    -------
-    (fig, ax) : tuple[matplotlib.figure.Figure, mpl_toolkits.mplot3d.Axes3D]
-        The Figure and its 3‑D Axes so the caller can further tweak or save.
-
-    Notes
-    -----
-    The implementation mirrors :pyfunc:`plot_heatmap` in spirit: we first pivot the
-    long‑format *data* frame into a dense 2‑D grid suitable for surface plotting and
-    then render it with :pyfunc:`Axes3D.plot_surface`, augmenting the plot with
-    thorough, inline commentary for educational purposes.
-    """
-
-    # ------------------------------------------------------------------
-    # 1. Reshape the long‑format *data* frame into a 2‑D grid (a pivot
-    #    table) so that each unique X‑value becomes a **row** and each
-    #    unique Y‑value becomes a **column**.  The cell holds the mean of
-    #    Z for that (X, Y) pair.  Example transformation:
-    #
-    #        ┌───────── original (long) format ─────────┐
-    #        │ SMA  LMA   score │
-    #        │  5    20   0.83  │
-    #        │  5    50   0.79  │    →  pivot_table →   LMA→   20    50   100
-    #        │ 10    20   0.81  │                       SMA ↓ ┌───────────────┐
-    #        │ 10    50   0.77  │                             │ 0.83  0.79  0.76│
-    #        │ 10    100  0.74  │                             │ 0.81  0.77  0.74│
-    #        └──────────────────┘                             └───────────────┘
-    #
-    #    Duplicate (SMA, LMA) pairs—if any—are *averaged* via ``aggfunc="mean"``.
-    #    The resulting 2‑D matrix (Z) is what ``imshow`` and ``contour`` expect.
-    # ------------------------------------------------------------------
-    grid = data.pivot_table(
-        index=x_col,          # rows   → X‑axis values
-        columns=y_col,        # columns→ Y‑axis values
-        values=z_col,         # cell values = Z
+    # Pivot so that columns = X values, index = Y values
+    grid = df.pivot_table(
+        index=y_col,       # rows → Y
+        columns=x_col,     # cols → X
+        values=z_col,      # cell values → Z
         aggfunc="mean",
+        sort=True,
     )
 
-    # Extract the *numeric* vectors representing the axis coordinates.
-    # ``pivot_table`` leaves them as (possibly) hetero‑typed Index objects,
-    # so we convert to *float64* ndarray for safe numeric processing.
-    x_vals = grid.columns.values.astype(float)  # shape = (N,)
-    y_vals = grid.index.values.astype(float)    # shape = (M,)
+    # Meshgrid coordinates
+    X_vals = grid.columns.values.astype(float)  # X axis ticks
+    Y_vals = grid.index.values.astype(float)    # Y axis ticks
+    X, Y = np.meshgrid(X_vals, Y_vals)
+    Z = grid.values.astype(float)
 
-    # ``plot_surface`` expects *meshgrid* inputs: two 2‑D arrays specifying
-    # the X & Y coordinates for every Z cell.  NumPy's ``meshgrid`` makes
-    # this trivial — note the ``indexing='xy'`` (default) which aligns with
-    # the Cartesian‑plane convention used by Matplotlib.
-    X, Y = np.meshgrid(x_vals, y_vals)  # both shape=(M, N)
-    Z = grid.values.astype(float)       # shape=(M, N)
-
-    # ------------------------------------------------------------------
-    # 2. Create a Figure and a single 3‑D Axes.  We use the familiar
-    #    "111" (one‑row, one‑col, first subplot) syntax and request the
-    #    "3d" projection.  Returning *fig* makes downstream saving easy.
-    # ------------------------------------------------------------------
+    # Plot
     fig = plt.figure()
-    ax: Axes3D = fig.add_subplot(111, projection="3d")
+    ax = fig.add_subplot(111, projection="3d")
+    surf = ax.plot_surface(X, Y, Z, cmap="inferno", edgecolor="none", antialiased=True)
 
-    # ------------------------------------------------------------------
-    # 3. Render the surface.  ``plot_surface`` internally converts the
-    #    (X, Y, Z) numeric grids into a *Poly3DCollection* — effectively
-    #    a mesh of quadrilaterals.  By default the Z‑value drives the
-    #    face‑color via the active colormap; we pick "viridis" because it
-    #    is perceptually uniform and color‑blind friendly.
-    # ------------------------------------------------------------------
-    surf = ax.plot_surface(
-        X, Y, Z,
-        cmap="inferno",
-        edgecolor="none",  # hide gridlines for a cleaner look
-        antialiased=True,
-    )
-
-    # ------------------------------------------------------------------
-    # 4. Decorate axes: labels, title and a color‑bar to communicate the
-    #    Z‑to‑color mapping.  We also rotate the view so the surface is
-    #    easily interpretable (elev=30°, azim=-135° is a common default).
-    # ------------------------------------------------------------------
     ax.set_xlabel(x_col)
     ax.set_ylabel(y_col)
     ax.set_zlabel(z_col)
     ax.set_title(f"Surface plot of {z_col} vs {x_col} & {y_col}")
     ax.view_init(elev=30, azim=-135)
-
     fig.colorbar(surf, ax=ax, shrink=0.6, aspect=10, label=z_col)
 
-    # ------------------------------------------------------------------
-    # 5. Return Figure and Axes for optional post‑processing.
-    # ------------------------------------------------------------------
     return fig, ax
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -402,10 +336,16 @@ def plot_data(
     
     Parameters
     ----------
+    x_col : str
+        The name of the column to use for the x-axis.
     x_data : pd.Series
         The data for the x-axis.
+    y_col : str
+        The name of the column to use for the y-axis.
     y_data : pd.Series
         The data for the y-axis.
+    z_col : str
+        The name of the column to use for the z-axis.
     z_data : pd.Series | None
         The data for the z-axis.
     plot_type : str
@@ -414,24 +354,18 @@ def plot_data(
         The path to save the plot to.
     """
 
-
     # Dispatch to the specific plot type requested.
     if plot_type == "heatmap":
-        fig, ax = plot_heatmap(x_data, y_data, z_data)
+        fig, ax = plot_heatmap(x_col, x_data, y_col, y_data, z_col, z_data)
 
     elif plot_type == "surface":
-        fig, ax = plot_surface(x_data, y_data, z_data)
+        fig, ax = plot_surface(x_col, x_data, y_col, y_data, z_col, z_data)
 
     elif plot_type == "3d":
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection="3d")
-        ax.scatter(x_data, y_data, z_data)
-        ax.set_xlabel(x_col)
-        ax.set_ylabel(y_col)
-        ax.set_zlabel(z_col)
-        ax.set_title(f"{z_col} vs {x_col} & {y_col}")
-    else:  # "2d" line plot
-        fig, ax = plot_2d(x_col, x_data, y_col, y_data)
+        fig, ax = plot_3d(x_col, x_data, y_col, y_data, z_col, z_data)
+
+    else:
+        fig, ax = plot_heatmap(x_col, x_data, y_col, y_data, z_col, z_data)
 
     # ------------------------------------------------------------------
     # Finally either save the figure to disk or show it interactively.
