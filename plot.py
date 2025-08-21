@@ -119,10 +119,13 @@ def read_csv(
     else:
         raise ValueError(f"Column {y_col} not found in {path}")
 
-    if z_col and z_col in df.columns:
-        z_data = df[z_col]
+    if z_col is not None:
+        if z_col in df.columns:
+            z_data = df[z_col]
+        else:
+            raise ValueError(f"Column {z_col} not found in {path} and is required for the chosen plot type.")
     else:
-        raise ValueError(f"Column {z_col} not found in {path}")
+        z_data = None
 
     # Return the DataFrame
     return x_data, y_data, z_data
@@ -132,25 +135,72 @@ def read_csv(
 # Plot helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def plot_heatmap(
-    data: pd.DataFrame,
+def plot_2d(
     x_col: str,
+    x_data: pd.Series,
     y_col: str,
-    z_col: str,
+    y_data: pd.Series,
 ) -> tuple[plt.Figure, plt.Axes]:
-    """Return a heat‑map & contour plot.
+    """
+    Plot a 2D line plot.
 
     Parameters
     ----------
-    data : pd.DataFrame
-        Input data containing *x_col*, *y_col* and *z_col*.
-    x_col, y_col, z_col : str
-        Column names to use for X (rows), Y (columns) and the Z value plotted.
+    x_col : str
+        The name of the column to use for the x-axis.
+    x_data : pd.Series
+        The data for the x-axis.
+    y_col : str
+        The name of the column to use for the y-axis.
+    y_data : pd.Series
+        The data for the y-axis.
 
     Returns
     -------
-    (fig, ax) : tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
-        The Figure and its primary Axes so the caller can further tweak or save.
+    tuple[plt.Figure, plt.Axes]
+        The Figure and its Axes so the caller can further tweak or save.
+    """
+
+    # Create the figure and axes
+    fig, ax = plt.subplots()
+    # Plot the data
+    ax.plot(x_data, y_data)
+    # Set the labels
+    ax.set_xlabel(x_col)
+    ax.set_ylabel(y_col)
+    # Set the title
+    ax.set_title(f"{x_col} vs {y_col}")
+    # Rotate the x-axis labels
+    plt.xticks(rotation=45, ha="right")
+    # Tighten the layout
+    plt.tight_layout()
+    # Return the figure and axes
+    return fig, ax
+
+def plot_heatmap(
+    x_y_col: str,
+    x_y_data: pd.Series,
+    z_col: str,
+    z_data: pd.Series,
+) -> tuple[plt.Figure, plt.Axes]:
+    """
+    Plot a heatmap and contour plot.
+    
+    Parameters
+    ----------
+    x_y_col : str
+        The name of the column to use for the x-axis and y-axis.
+    x_y_data : pd.Series
+        The data for the x-axis and y-axis.
+    z_col : str
+        The name of the column to use for the z-axis.
+    z_data : pd.Series
+        The data for the z-axis.
+
+    Returns
+    -------
+    tuple[plt.Figure, plt.Axes]
+        The Figure and its Axes so the caller can further tweak or save.
     """
 
     # ------------------------------------------------------------------
@@ -338,58 +388,50 @@ def plot_surface(
 # ──────────────────────────────────────────────────────────────────────────────
 
 def plot_data(
-    input_files: list[Path],
-    plot_type: str = "2d",
+    x_col: str,
+    x_data: pd.Series,
+    y_col: str,
+    y_data: pd.Series,
+    z_col: str,
+    z_data: pd.Series | None,
+    plot_type: str,
     output: Path | None = None,
 ) -> None:
-    """Read *input_files* (one or many) and create the chosen plot."""
+    """
+    Plot the data.
+    
+    Parameters
+    ----------
+    x_data : pd.Series
+        The data for the x-axis.
+    y_data : pd.Series
+        The data for the y-axis.
+    z_data : pd.Series | None
+        The data for the z-axis.
+    plot_type : str
+        The type of plot to create.
+    output : Path | None
+        The path to save the plot to.
+    """
 
-    # --------------------------------------------------------------
-    # Read and concatenate all CSVs so we can treat them uniformly.
-    # --------------------------------------------------------------
-    dfs: list[pd.DataFrame] = []
-    for fp in input_files:
-        df = pd.read_csv(fp)
-        if df.shape[1] < 3:
-            raise ValueError(f"{fp} must contain at least three columns")
-        df["__source__"] = fp.stem  # Track source file for legend grouping
-        dfs.append(df)
-
-    data = pd.concat(dfs, ignore_index=True)
-    x_col, y_col, z_col = data.columns[:3]
 
     # Dispatch to the specific plot type requested.
     if plot_type == "heatmap":
-        fig, ax = plot_heatmap(data, x_col, y_col, z_col)
+        fig, ax = plot_heatmap(x_data, y_data, z_data)
 
     elif plot_type == "surface":
-        fig, ax = plot_surface(data, x_col, y_col, z_col)
+        fig, ax = plot_surface(x_data, y_data, z_data)
 
     elif plot_type == "3d":
         fig = plt.figure()
         ax = fig.add_subplot(111, projection="3d")
-        for src, grp in data.groupby("__source__"):
-            ax.scatter(grp[x_col], grp[y_col], grp[z_col], label=src)
+        ax.scatter(x_data, y_data, z_data)
         ax.set_xlabel(x_col)
         ax.set_ylabel(y_col)
         ax.set_zlabel(z_col)
         ax.set_title(f"{z_col} vs {x_col} & {y_col}")
-        if data["__source__"].nunique() > 1:
-            ax.legend()
-
     else:  # "2d" line plot
-        fig, ax = plt.subplots()
-        for src, grp in data.groupby("__source__"):
-            # Combine the X & Y columns to create a unique tick label per point
-            combined = grp[[x_col, y_col]].apply(lambda r: f"({r[x_col]},{r[y_col]})", axis=1)
-            ax.plot(combined, grp[z_col], marker="o", label=src)
-        ax.set_xlabel(f"({x_col}, {y_col})")
-        ax.set_ylabel(z_col)
-        ax.set_title(z_col)
-        plt.xticks(rotation=45, ha="right")
-        if data["__source__"].nunique() > 1:
-            ax.legend()
-        plt.tight_layout()
+        fig, ax = plot_2d(x_col, x_data, y_col, y_data)
 
     # ------------------------------------------------------------------
     # Finally either save the figure to disk or show it interactively.
@@ -398,8 +440,8 @@ def plot_data(
         plt.savefig(output, dpi=300, bbox_inches="tight")
         plt.close(fig)  # Prevent figure leaks in batch workflows.
         print(f"Plot saved to: {output}")
-    else:
-        plt.show()
+    
+    plt.show()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Main entry‑point
@@ -409,9 +451,16 @@ def main() -> None:
     args = parse_args()
 
     # Read data from input file
-    df = read_csv(args.input_file, args.x_col, args.y_col, args.z_col)
+    x_data, y_data, z_data = read_csv(args.input_file, args.x_col, args.y_col, args.z_col)
 
-    plot_data(df, args.type, args.output)
+    # Plot the data
+    plot_data(
+        args.x_col, x_data,
+        args.y_col, y_data,
+        args.z_col, z_data,
+        args.type,
+        args.output
+    )
 
 if __name__ == "__main__":
     main()
