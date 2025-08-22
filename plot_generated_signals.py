@@ -42,8 +42,13 @@ def load_data(file: str) -> pd.DataFrame:
     df : pd.DataFrame
         The loaded dataW
     """
-    df = pd.read_csv(file, parse_dates=["DATETIME"])
-    df = df.set_index("DATETIME").sort_index()
+    df = pd.read_csv(
+            file,
+            parse_dates=["DATETIME"],
+            index_col="DATETIME",
+            low_memory=False
+    )
+
     return df
 
 
