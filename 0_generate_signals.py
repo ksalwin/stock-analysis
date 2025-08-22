@@ -10,7 +10,7 @@ Usage
 -----
     python 0_generate_signals.py \
         --sma-short N --sma-long M \
-        [--out-dir DIR] [--jobs N] [--show-no-signal] \
+        [--out-dir DIR] [--jobs N] \
         FILE [FILE ...]
 
 Arguments
@@ -19,7 +19,6 @@ Arguments
   --sma-long M           Window for the long SMA (int, required)
   --out-dir DIR          Output directory (default: ./out/)
   --jobs N               Process up to N files in parallel (default: 1)
-  --show-no-signal       Also print tickers whose latest signal is "No signal …"
 
 Input
 -----
@@ -45,10 +44,6 @@ After processing, prints one-line summaries like:
 
     Buy: TKR1, TKR2
     Sell: TKR3
-
-and, if --show-no-signal is given:
-
-    No signal: TKR4, TKR5
 
 Notes
 -----
@@ -91,11 +86,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
             "--out-dir", default="out/",
             help="Root output directory (default: current)")
-    parser.add_argument(
-            "--show-no-signal",
-            dest="show_no",
-            action="store_true",
-            help="Also print tickers whose latest signal is 'No signal …'")
     parser.add_argument(
             "files", nargs="+",
             help="One or more input data files")
