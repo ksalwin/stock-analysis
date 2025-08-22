@@ -487,7 +487,7 @@ def process_file(path: str,
     latest_signal = add_sma_crossover_signals(df, sma_short_range, sma_long_range)
 
     # Drop all `SMA_` columns
-    df = df.drop(df.filter(like="SMA_").columns, axis=1)
+    # df = df.drop(df.filter(like="SMA_").columns, axis=1)
     # Drop other columns
     df = df.drop(columns=["PER", "OPEN", "HIGH", "LOW", "VOL", "OPENINT"])
 
