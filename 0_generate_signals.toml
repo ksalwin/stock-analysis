@@ -16,4 +16,6 @@ long_range  = [90, 180, 5] # min, max, step
 
 # ----- inputs -----
 [inputs]
-files = ["wse_stocks/slv.txt"]   # you can list multiple
+files = [
+    "wse_stocks/slv.txt"
+]
