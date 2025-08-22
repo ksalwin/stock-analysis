@@ -1,0 +1,19 @@
+# ----- top-level run controls -----
+jobs    = 16               # number of workers
+out_dir = "out/"           # output root (will be normalized with a trailing /)
+show_no = false            # print "No signal" tickers in console summary
+
+# ----- SMA settings -----
+[sma]
+# Choose either single or range (but not both). If both are present, the CLI picks mode later.
+# Single mode:
+# short = 20
+# long  = 50
+
+# Range mode:
+short_range = [5, 60, 1]   # min, max, step
+long_range  = [90, 180, 5] # min, max, step
+
+# ----- inputs -----
+[inputs]
+files = ["wse_stocks/slv.txt"]   # you can list multiple
