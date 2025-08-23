@@ -67,44 +67,6 @@ from typing import Any, Dict, List, Optional, Tuple
 # CLI parsing
 # ──────────────────────────────────────────────────────────────────────────────
 
-def load_toml_config(path: str) -> Dict[str, Any]:
-    """
-    Load a configuration from a TOML file and return it as a plain dict.
-
-    Parameters
-    ----------
-    path : str
-        Path to a *.toml file (e.g., '0_generate_signals.toml').
-
-    Returns
-    -------
-    dict[str, Any]
-        A nested dictionary mirroring the TOML structure.
-        Example for this project's config:
-            {
-              "jobs": 16,
-              "out_dir": "out/",
-              "show_no": false,
-              "sma": {
-                "short_range": [5, 60, 1],
-                "long_range":  [90, 180, 5]
-              },
-              "inputs": {
-                "files": ["wse_stocks/slv.txt"]
-              }
-            }
-
-    Notes
-    -----
-    - 'tomllib' requires reading in binary mode ('rb'), not text mode.
-    """
-    # Open in binary mode as required by 'tomllib'
-    with open(path, "rb") as f:
-        config: Dict[str, Any] = tomllib.load(f)
-
-    # Return the raw config dict (no mutations here)
-    return config
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
             description="Generate Golden‑Cross SMA Buy/Sell signals."
@@ -150,58 +112,209 @@ def parse_args() -> argparse.Namespace:
 
     args = parser.parse_args()
 
-    # --- Argument validation
-    if args.jobs < 1:
-        parser.error("--jobs must be >= 1")
-
-    # Decide mode
-    any_single_args_given = (args.sma_short is not None) or \
-                            (args.sma_long  is not None)
-    any_range_args_given  = (args.sma_short_range is not None) or \
-                            (args.sma_long_range  is not None)
-
-    # Both single and range arguments provided - error
-    if any_single_args_given and any_range_args_given:
-        parser.error("Choose ONE mode: single (--sma-short & --sma-long) "
-                     "OR range (--sma-short-range AND --sma-long-range).")
-
-    # Validate single arguments
-    if any_single_args_given:
-        if args.sma_short is None or args.sma_long is None:
-            parser.error("In single mode you must provide BOTH --sma-short and --sma-long.")
-        if args.sma_short < 1 or args.sma_long < 1:
-            parser.error("--sma-short/--sma-long must be positive integers.")
-        if args.sma_short > args.sma_long:
-            parser.error("--sma-short must be <= --sma-long.")
-        args.mode = "single"
-
-    # Validate range arguments
-    elif any_range_args_given:
-        if args.sma_short_range is None or args.sma_long_range is None:
-            parser.error("In range mode you must provide BOTH --sma-short-range and --sma-long-range.")
-
-        # Unpack input arguments tuple
-        (smin, smax, sstep) = args.sma_short_range
-        (lmin, lmax, lstep) = args.sma_long_range
-
-        # Validate arguments
-        for name, min_val, max_val, step in (("sma-short-range", smin, smax, sstep),
-                                             ("sma-long-range",  lmin, lmax, lstep)):
-            if min_val < 1 or max_val < 1 or step < 1:
-                parser.error(f"--{name}: all values must be positive integers.")
-            if min_val > max_val:
-                parser.error(f"--{name}: min must be <= max.")
-
-        args.mode = "range"
-    else:
-        parser.error("Choose a mode: either single (--sma-short & --sma-long) "
-                     "or range (--sma-short-range & --sma-long-range).")
-
-    # Normalize output directory
-    args.out_dir = os.path.join(args.out_dir, "")
-
     return args
 
+
+def load_toml_config(path: str) -> Dict[str, Any]:
+    """
+    Load a configuration from a TOML file and return it as a plain dict.
+
+    Parameters
+    ----------
+    path : str
+        Path to a *.toml file (e.g., '0_generate_signals.toml').
+
+    Returns
+    -------
+    dict[str, Any]
+        A nested dictionary mirroring the TOML structure.
+        Example for this project's config:
+            {
+              "jobs": 16,
+              "out_dir": "out/",
+              "show_no": false,
+              "sma": {
+                "short_range": [5, 60, 1],
+                "long_range":  [90, 180, 5]
+              },
+              "inputs": {
+                "files": ["wse_stocks/slv.txt"]
+              }
+            }
+
+    Notes
+    -----
+    - 'tomllib' requires reading in binary mode ('rb'), not text mode.
+    """
+    # Open in binary mode as required by 'tomllib'
+    with open(path, "rb") as f:
+        config: Dict[str, Any] = tomllib.load(f)
+
+    # Return the raw config dict (no mutations here)
+    return config
+
+def merge_config_into_args(args: argparse.Namespace, cfg: Dict[str, Any]) -> None:
+    """
+    Merge selected keys from TOML config into argparse 'args' *in place*.
+
+    Precedence rule
+    ---------------
+    - Command‑line arguments **always override** config values.
+      (We only copy a config value if the corresponding CLI value is "unset".)
+
+    Supported config keys (TOML)
+    ----------------------------
+    Top‑level:
+      jobs: int
+      out_dir: str
+      show_no: bool
+
+    Table [sma]:
+      short: int                # single mode (optional)
+      long: int                 # single mode (optional)
+      short_range: [int,int,int]
+      long_range:  [int,int,int]
+
+    Table [inputs]:
+      files: list[str]
+
+    Notes
+    -----
+    - We don't validate here; we only copy values into 'args'.
+      Validation happens later (after merge), so config‑provided values are
+      checked with the same rules as CLI‑provided ones.
+    """
+    # Helper to traverse nested dicts, returns default if any key is missing.
+    def get_path(d: Dict[str, Any], path: list[str], default=None):
+        cur: Any = d
+        for k in path:
+            if not isinstance(cur, dict) or k not in cur:
+                return default
+            cur = cur[k]
+        return cur
+
+    # --- Simple scalars (copy only if CLI left the default/empty) ---
+    if args.jobs == 1:
+        v = cfg.get("jobs")
+        if isinstance(v, int):
+            args.jobs = v
+
+    if args.out_dir == "out/":
+        v = cfg.get("out_dir")
+        if isinstance(v, str):
+            args.out_dir = v
+
+    # 'show_no' is False unless '--show-no-signal' was set.
+    # Only copy from config when CLI did not set it.
+    if not getattr(args, "show_no", False):
+        v = cfg.get("show_no")
+        if isinstance(v, bool):
+            args.show_no = v
+
+    # --- SMA settings (single or range) ---
+    sma = cfg.get("sma", {})
+    # Single mode (copy only if CLI didn’t pass them)
+    if args.sma_short is None:
+        val = sma.get("short")
+        if isinstance(val, int):
+            args.sma_short = val
+    if args.sma_long is None:
+        val = sma.get("long")
+        if isinstance(val, int):
+            args.sma_long = val
+
+    # Range mode (copy only if CLI didn’t pass them)
+    if args.sma_short_range is None:
+        val = sma.get("short_range")
+        if isinstance(val, list) and len(val) == 3 and all(isinstance(x, int) for x in val):
+            args.sma_short_range = val
+    if args.sma_long_range is None:
+        val = sma.get("long_range")
+        if isinstance(val, list) and len(val) == 3 and all(isinstance(x, int) for x in val):
+            args.sma_long_range = val
+
+    # --- Input files (copy only if CLI omitted them) ---
+    if not args.files:
+        files = get_path(cfg, ["inputs", "files"])
+        if isinstance(files, list) and all(isinstance(x, str) for x in files):
+            args.files = files
+
+def validate_args(args: argparse.Namespace) -> None:
+    """
+    Validate merged CLI+config arguments and finalize derived fields.
+
+    What this function guarantees on return
+    --------------------------------------
+    - args.jobs            : int >= 1
+    - args.mode            : "single" or "range"
+    - args.files           : non-empty list[str]
+    - args.out_dir         : normalized with trailing os.sep
+    - args.sma_short_range : [int,int,int]
+    - args.sma_long_range  : [int,int,int]
+
+    Errors
+    ------
+    Raises SystemExit with a clear message if any rule is violated.
+    """
+    # 1) --jobs must be >= 1
+    if args.jobs < 1:
+        raise SystemExit("--jobs must be >= 1")
+
+    # 2) Decide operating mode (single vs. range)
+    any_single_args_given = (args.sma_short is not None) or (args.sma_long is not None)
+    any_range_args_given  = (args.sma_short_range is not None) or (args.sma_long_range is not None)
+
+    if any_single_args_given and any_range_args_given:
+        raise SystemExit(
+            "Choose ONE mode: single (--sma-short & --sma-long) "
+            "OR range (--sma-short-range AND --sma-long-range)."
+        )
+
+    if any_single_args_given:
+        # Single-mode validation
+        if args.sma_short is None or args.sma_long is None:
+            raise SystemExit("In single mode you must provide BOTH --sma-short and --sma-long.")
+        if args.sma_short < 1 or args.sma_long < 1:
+            raise SystemExit("--sma-short/--sma-long must be positive integers.")
+        if args.sma_short > args.sma_long:
+            raise SystemExit("--sma-short must be <= --sma-long.")
+        args.mode = "single"
+
+    elif any_range_args_given:
+        # Range-mode validation
+        if args.sma_short_range is None or args.sma_long_range is None:
+            raise SystemExit("In range mode you must provide BOTH --sma-short-range and --sma-long-range.")
+        (smin, smax, sstep) = args.sma_short_range
+        (lmin, lmax, lstep) = args.sma_long_range
+        for name, min_val, max_val, step in (
+            ("sma-short-range", smin, smax, sstep),
+            ("sma-long-range",  lmin, lmax, lstep),
+        ):
+            if min_val < 1 or max_val < 1 or step < 1:
+                raise SystemExit(f"--{name}: all values must be positive integers.")
+            if min_val > max_val:
+                raise SystemExit(f"--{name}: min must be <= max.")
+        args.mode = "range"
+    else:
+        raise SystemExit(
+            "Choose a mode: either single (--sma-short & --sma-long) "
+            "or range (--sma-short-range & --sma-long-range)."
+        )
+
+    # 3) Ensure input files exist (from CLI or config)
+    if not args.files:
+        raise SystemExit(
+            "No input FILEs provided. Supply them positionally on the CLI "
+            "or set [inputs].files in the TOML config."
+        )
+
+    # 4) Normalize output directory to always have a trailing separator
+    args.out_dir = os.path.join(args.out_dir, "")
+
+    # 5) Finalize: convert single→range for uniform downstream processing
+    if args.mode == "single":
+        args.sma_short_range = [args.sma_short, args.sma_short, 1]
+        args.sma_long_range  = [args.sma_long,  args.sma_long,  1]
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Data helpers
@@ -563,6 +676,14 @@ def main() -> None:
     - Runs sequentially or in parallel.
     """
     args = parse_args()
+
+    # If --config is provided, load it
+    if args.config:
+        cfg = load_toml_config(args.config)
+        merge_config_into_args(args, cfg)
+
+    # Validate and prepare arguments
+    validate_args(args)
 
     # Create output directory
     os.makedirs(args.out_dir, exist_ok=True)
