@@ -120,13 +120,16 @@ def parse_args() -> argparse.Namespace:
 
     # Common arguments
     parser.add_argument(
+            "--config", default="0_generate_signals.toml",
+            help="Path to config file (default: 0_generate_signals.toml)")
+    parser.add_argument(
             "--jobs", type=int, default=1,
             help="Number of parallel workers (default: 1)")
     parser.add_argument(
             "--out-dir", default="out/",
             help="Root output directory (default: current)")
     parser.add_argument(
-            "files", nargs="+",
+            "files", nargs="*",
             help="One or more input data files")
 
     # Single SMA pair
