@@ -57,14 +57,53 @@ import argparse
 import os
 import pandas as pd
 import sys
+import tomllib
 
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CLI parsing
 # ──────────────────────────────────────────────────────────────────────────────
+
+def load_toml_config(path: str) -> Dict[str, Any]:
+    """
+    Load a configuration from a TOML file and return it as a plain dict.
+
+    Parameters
+    ----------
+    path : str
+        Path to a *.toml file (e.g., '0_generate_signals.toml').
+
+    Returns
+    -------
+    dict[str, Any]
+        A nested dictionary mirroring the TOML structure.
+        Example for this project's config:
+            {
+              "jobs": 16,
+              "out_dir": "out/",
+              "show_no": false,
+              "sma": {
+                "short_range": [5, 60, 1],
+                "long_range":  [90, 180, 5]
+              },
+              "inputs": {
+                "files": ["wse_stocks/slv.txt"]
+              }
+            }
+
+    Notes
+    -----
+    - 'tomllib' requires reading in binary mode ('rb'), not text mode.
+    """
+    # Open in binary mode as required by 'tomllib'
+    with open(path, "rb") as f:
+        config: Dict[str, Any] = tomllib.load(f)
+
+    # Return the raw config dict (no mutations here)
+    return config
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
