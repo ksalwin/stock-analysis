@@ -210,15 +210,21 @@ def analyse(signals_df: pd.DataFrame) -> pd.DataFrame:
 
         # At the end of the series, if we still have an open Buy, it remains unmatched → ignore (no closing Sell).
         # Now compute statistics from the collected trade PnLs for this signal column.
-        total_trades = len(trade_pnls)                                     # Number of completed Buy→Sell pairs
-        pos_pnls = [p for p in trade_pnls if p >= 0.0]                     # Non-negative outcomes (breakeven counts as a “win”)
-        neg_pnls = [p for p in trade_pnls if p <  0.0]                     # Strictly negative outcomes
+        # Number of completed Buy→Sell pairs
+        total_trades = len(trade_pnls)
 
-        pos_cnt = float(len(pos_pnls))                                     # Convert to float for consistent dtype downstream
+        # Split positive and negative PnLs
+        pos_pnls = [p for p in trade_pnls if p >= 0.0]
+        neg_pnls = [p for p in trade_pnls if p <  0.0]
+
+        # Number of positive and negative trades
+        pos_cnt = float(len(pos_pnls))
         neg_cnt = float(len(neg_pnls))
-        pos_sum = float(sum(pos_pnls)) if pos_pnls else 0.0                # Sum positive PnL (0.0 if none)
-        neg_sum = float(sum(neg_pnls)) if neg_pnls else 0.0                # Sum negative PnL (≤ 0.0; 0.0 if none)
-        net_sum = pos_sum + neg_sum                                        # net PnL across all trades
+
+        # Sum of positive and negative PnL
+        pos_sum = float(sum(pos_pnls)) if pos_pnls else 0.0
+        neg_sum = float(sum(neg_pnls)) if neg_pnls else 0.0
+        net_sum = pos_sum + neg_sum
 
         # Win rate is the fraction of non-negative trades.
         win_rate = (pos_cnt / total_trades * 100.0) if total_trades > 0 else np.nan
