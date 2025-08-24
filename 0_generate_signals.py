@@ -184,32 +184,46 @@ def merge_config_into_args(args: argparse.Namespace, cfg: Dict[str, Any]) -> Non
       Validation happens later (after merge), so config‑provided values are
       checked with the same rules as CLI‑provided ones.
     """
-    # Helper to traverse nested dicts, returns default if any key is missing.
-    def get_path(d: Dict[str, Any], path: list[str], default=None):
+    # Helper function to traverse nested dicts, returns default if any key is missing.
+    def get_path(d: Dict[str, Any], path: list[str], default_return=None) -> Any:
+        # Creates variable cur of type Any, which is a generic type that can hold any value
+        # cur is like a pointer as we drill down into the dictionary
+        # At the start, cur is assigned the value of d (the input dictionary) 
+        # d is the config dictionary
+        # Any is a generic type that can hold any value
         cur: Any = d
-        for k in path:
-            if not isinstance(cur, dict) or k not in cur:
+        # Iterates over each key in the path list
+        # path is a list of strings, each string is a key in the dictionary
+        # Each loop moves the pointer one step deeper into the dictionary
+        for key in path:
+            # Checks if cur is not a dictionary or if the current key k is not present in cur
+            # If either of these conditions is true, the function returns the default value
+            # If cur is a dictionary and k is present, cur is updated to the value associated with k
+            if not isinstance(cur, dict) or key not in cur:
                 return default
-            cur = cur[k]
+            cur = cur[key]
         return cur
 
     # --- Simple scalars (copy only if CLI left the default/empty) ---
+    # Check if the user did NOT explicitly set --jobs on the CLI.
+    # (In argparse we gave jobs a default = 1. So if it's still 1, it means
+    #  the user didn't touch it. If they passed --jobs 8, then args.jobs == 8.)
     if args.jobs == 1:
-        v = cfg.get("jobs")
-        if isinstance(v, int):
-            args.jobs = v
+        val = cfg.get("jobs")
+        if isinstance(val, int):
+            args.jobs = val
 
     if args.out_dir == "out/":
-        v = cfg.get("out_dir")
-        if isinstance(v, str):
-            args.out_dir = v
+        val = cfg.get("out_dir")
+        if isinstance(val, str):
+            args.out_dir = val
 
     # 'show_no' is False unless '--show-no-signal' was set.
     # Only copy from config when CLI did not set it.
     if not getattr(args, "show_no", False):
-        v = cfg.get("show_no")
-        if isinstance(v, bool):
-            args.show_no = v
+        val = cfg.get("show_no")
+        if isinstance(val, bool):
+            args.show_no = val
 
     # --- SMA settings (single or range) ---
     sma = cfg.get("sma", {})
