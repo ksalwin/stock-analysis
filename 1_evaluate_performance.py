@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
             help="Root output directory (default: out/)")
     parser.add_argument(
             "--jobs", type=int, default=1,
-            help="number of parallel jobs/processes (default 1)")
+            help="number of parallel jobs/processes (default: 1)")
     parser.add_argument(
             "files", nargs="*",
             help="explicit paths to *-allsignals.txt files")
@@ -312,7 +312,11 @@ def process_file(path: Path) -> None:
     output_df = analyse(data)
 
     # Write the report to a file
-    out_file = path.with_name(path.stem + "-report" + path.suffix)
+    # Extract ticker from path
+    ticker = path.stem.split("-")[0]
+    # Define output file name
+    out_file = path.with_name(ticker + "-performance.csv")
+    # Write the report to a file
     output_df.to_csv(out_file, float_format="%.4f")
 
 # ────────────────────────────────────────────────────────────────────────────────
