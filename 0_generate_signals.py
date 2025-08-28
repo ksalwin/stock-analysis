@@ -255,59 +255,74 @@ def merge_config_into_args(args: argparse.Namespace, cfg: Dict[str, Any]) -> Non
 
 def validate_args(args: argparse.Namespace) -> None:
     """
-    Validate merged CLI+config arguments and finalize derived fields.
+    Validate command line arguments.
 
-    What this function guarantees on return
-    --------------------------------------
-    - args.jobs            : int >= 1
-    - args.mode            : "single" or "range"
-    - args.files           : non-empty list[str]
-    - args.out_dir         : normalized with trailing os.sep
-    - args.sma_short_range : [int,int,int]
-    - args.sma_long_range  : [int,int,int]
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed command line arguments.
 
-    Errors
-    ------
-    Raises SystemExit with a clear message if any rule is violated.
+    Guarantees on successful return:
+      - args.jobs            : int >= 1
+      - args.mode            : "single" or "range"
+      - args.files           : non-empty list[str]
+      - args.out_dir         : normalized with trailing os.sep
+      - args.sma_short_range : [int,int,int]
+      - args.sma_long_range  : [int,int,int]
+
+    Errors:
+      - Raises SystemExit with a clear message if any rule is violated.
     """
-    # 1) --jobs must be >= 1
+
+    _validate_arg_jobs(args)
+    _validate_arg_mode_and_decide(args)
+    _validate_arg_files(args)
+    _normalize_out_dir(args)
+    _finalize_single_to_range_if_needed(args)
+
+def _validate_arg_jobs(args: argparse.Namespace) -> None:
+    """
+    Enforce that --jobs is a positive integer.
+
+    Why separate?
+      - It's a simple scalar rule that can be unit-tested in isolation.
+      - Keeping it here keeps the main flow in validate_args() clean.
+    """
+    # Argparse already parsed --jobs as int; just check the value.
     if args.jobs < 1:
         raise SystemExit("--jobs must be >= 1")
 
-    # 2) Decide operating mode (single vs. range)
-    any_single_args_given = (args.sma_short is not None) or (args.sma_long is not None)
-    any_range_args_given  = (args.sma_short_range is not None) or (args.sma_long_range is not None)
 
-    if any_single_args_given and any_range_args_given:
+def _validate_arg_mode_and_decide(args: argparse.Namespace) -> None:
+    """
+    Decide operating mode (single vs. range) and validate the corresponding inputs.
+
+    Side effects:
+      - Sets args.mode to "single" or "range".
+      - Does NOT convert single->range (that happens in a later, explicit step).
+
+    Why separate?
+      - Mode picking and mode-specific rules form a cohesive unit.
+      - Splitting the internals (_validate_single_values/_validate_range_values)
+        keeps this function readable.
+    """
+    # Detect whether *any* single-mode or *any* range-mode flags were supplied.
+    any_single = (args.sma_short is not None) or (args.sma_long is not None)
+    any_range  = (args.sma_short_range is not None) or (args.sma_long_range is not None)
+
+    # Disallow mixing modes—this is a common UX mistake worth catching early.
+    if any_single and any_range:
         raise SystemExit(
             "Choose ONE mode: single (--sma-short & --sma-long) "
             "OR range (--sma-short-range AND --sma-long-range)."
         )
 
-    if any_single_args_given:
-        # Single-mode validation
-        if args.sma_short is None or args.sma_long is None:
-            raise SystemExit("In single mode you must provide BOTH --sma-short and --sma-long.")
-        if args.sma_short < 1 or args.sma_long < 1:
-            raise SystemExit("--sma-short/--sma-long must be positive integers.")
-        if args.sma_short > args.sma_long:
-            raise SystemExit("--sma-short must be <= --sma-long.")
+    # Validate the specific mode or ask the user to pick one.
+    if any_single:
+        _validate_single_values(args)
         args.mode = "single"
-
-    elif any_range_args_given:
-        # Range-mode validation
-        if args.sma_short_range is None or args.sma_long_range is None:
-            raise SystemExit("In range mode you must provide BOTH --sma-short-range and --sma-long-range.")
-        (smin, smax, sstep) = args.sma_short_range
-        (lmin, lmax, lstep) = args.sma_long_range
-        for name, min_val, max_val, step in (
-            ("sma-short-range", smin, smax, sstep),
-            ("sma-long-range",  lmin, lmax, lstep),
-        ):
-            if min_val < 1 or max_val < 1 or step < 1:
-                raise SystemExit(f"--{name}: all values must be positive integers.")
-            if min_val > max_val:
-                raise SystemExit(f"--{name}: min must be <= max.")
+    elif any_range:
+        _validate_range_values(args)
         args.mode = "range"
     else:
         raise SystemExit(
@@ -315,18 +330,86 @@ def validate_args(args: argparse.Namespace) -> None:
             "or range (--sma-short-range & --sma-long-range)."
         )
 
-    # 3) Ensure input files exist (from CLI or config)
+def _validate_arg_files(args: argparse.Namespace) -> None:
+    """
+    Ensure we have at least one input file (from CLI or config).
+
+    Why separate?
+      - Keeps user-facing error strings near the rule they belong to.
+      - Easy to extend later (e.g., add existence checks or glob expansion).
+    """
     if not args.files:
         raise SystemExit(
             "No input FILEs provided. Supply them positionally on the CLI "
             "or set [inputs].files in the TOML config."
         )
 
-    # 4) Normalize output directory to always have a trailing separator
+def _normalize_out_dir(args: argparse.Namespace) -> None:
+    """
+    Force a trailing separator on out_dir so downstream path joins are consistent.
+
+    Implementation detail:
+      - os.path.join(dir, "") is a cross-platform way to ensure the trailing sep.
+    """
     args.out_dir = os.path.join(args.out_dir, "")
 
-    # 5) Finalize: convert single→range for uniform downstream processing
-    if args.mode == "single":
+def _validate_single_values(args: argparse.Namespace) -> None:
+    """
+    Validate inputs for single mode: --sma-short and --sma-long.
+
+    Rules:
+      - Both must be provided.
+      - Both must be positive integers.
+      - short <= long (typical SMA constraint).
+    """
+    # Verify both flags are present
+    if args.sma_short is None or args.sma_long is None:
+        raise SystemExit("In single mode you must provide BOTH --sma-short and --sma-long.")
+
+    # Verify both are positive
+    if args.sma_short < 1 or args.sma_long < 1:
+        raise SystemExit("--sma-short/--sma-long must be positive integers.")
+
+    # Verify ordering (prevents nonsense like short=200, long=20)
+    if args.sma_short > args.sma_long:
+        raise SystemExit("--sma-short must be <= --sma-long.")
+
+
+def _validate_range_values(args: argparse.Namespace) -> None:
+    """
+    Validate inputs for range mode: --sma-short-range and --sma-long-range.
+
+    Each must be a 3-tuple [min, max, step] of positive ints, with min <= max.
+    """
+    # Both ranges must be present when operating in range mode.
+    if args.sma_short_range is None or args.sma_long_range is None:
+        raise SystemExit("In range mode you must provide BOTH --sma-short-range and --sma-long-range.")
+
+    # Unpack for readability (argparse gave us lists of three ints)
+    (smin, smax, sstep) = args.sma_short_range
+    (lmin, lmax, lstep) = args.sma_long_range
+
+    # Loop applies the same rules to both short and long ranges.
+    for name, min_val, max_val, step in (
+        ("sma-short-range", smin, smax, sstep),
+        ("sma-long-range",  lmin, lmax, lstep),
+    ):
+        # All three must be positive
+        if min_val < 1 or max_val < 1 or step < 1:
+            raise SystemExit(f"--{name}: all values must be positive integers.")
+        # And min must not exceed max
+        if min_val > max_val:
+            raise SystemExit(f"--{name}: min must be <= max.")
+
+def _finalize_single_to_range_if_needed(args: argparse.Namespace) -> None:
+    """
+    Convert single-mode (--sma-short/--sma-long) to range form in place.
+
+    Why do this?
+      - Downstream code can treat both modes uniformly by iterating ranges.
+      - For single mode, we just set step=1 and min=max=<value>.
+    """
+    if getattr(args, "mode", None) == "single":
         args.sma_short_range = [args.sma_short, args.sma_short, 1]
         args.sma_long_range  = [args.sma_long,  args.sma_long,  1]
 
