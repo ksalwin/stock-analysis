@@ -270,7 +270,7 @@ def plot_surface(
     ax.set_ylabel(y_col)
     ax.set_zlabel(z_col)
     ax.set_title(f"Surface plot of {z_col}")
-    ax.view_init(elev=30, azim=-135)
+    ax.view_init(elev=90, azim=-90)
     fig.colorbar(surf, ax=ax, shrink=0.6, aspect=10, label=z_col)
 
     return fig, ax
