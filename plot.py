@@ -40,7 +40,7 @@ def parse_args() -> argparse.Namespace:
     # Allow one or many files: "nargs='+'" means 1..N files are required.
     parser.add_argument(
         "input_files",
-        nargs="+",
+        nargs="+",              # ← one or many
         type=Path,
         help="one or more input CSV files",
     )
@@ -269,7 +269,7 @@ def plot_surface(
     ax.set_xlabel(x_col)
     ax.set_ylabel(y_col)
     ax.set_zlabel(z_col)
-    ax.set_title(f"Surface plot of {z_col}")
+    ax.set_title(f"Surface plot of {z_col} vs {x_col} & {y_col}")
     ax.view_init(elev=90, azim=-90)
     fig.colorbar(surf, ax=ax, shrink=0.6, aspect=10, label=z_col)
 
@@ -288,7 +288,7 @@ def plot_data(
     z_data: pd.Series | None,
     plot_type: str,
     output: Path | None = None,
-) -> tuple[plt.Figure, plt.Axes]:
+) -> None:
     """
     Plot the data.
     
@@ -332,8 +332,9 @@ def plot_data(
         plt.savefig(output, dpi=300, bbox_inches="tight")
         plt.close(fig)  # Prevent figure leaks in batch workflows.
         print(f"Plot saved to: {output}")
-    
+
     return fig, ax
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Main entry‑point
@@ -370,7 +371,6 @@ def main() -> None:
         if not out:
             ax.set_title(f"{path.stem} — {args.z_col} vs {args.x_col} & {args.y_col}")  # clarify which file
             figs.append(fig)
-
 
     # Show all figures together only if not saving
     if figs:
