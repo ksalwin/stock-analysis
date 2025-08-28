@@ -220,6 +220,7 @@ def analyse(signals_df: pd.DataFrame) -> pd.DataFrame:
         # Number of positive and negative trades
         pos_cnt = float(len(pos_pnls))
         neg_cnt = float(len(neg_pnls))
+        total_cnt = int(pos_cnt + neg_cnt)
 
         # Sum of positive and negative PnL
         pos_sum = float(sum(pos_pnls)) if pos_pnls else 0.0
@@ -264,8 +265,9 @@ def analyse(signals_df: pd.DataFrame) -> pd.DataFrame:
         rows.append({
             "SMA_short": sma_short,
             "SMA_long": sma_long,
-            "POS_CNT": pos_cnt,
-            "NEG_CNT": neg_cnt,
+            "POS_CNT": int(pos_cnt),
+            "NEG_CNT": int(neg_cnt),
+            "TOTAL_CNT": total_cnt,
             "POS_PnL": pos_sum,
             "NEG_PnL": neg_sum,
             "NET_PnL": net_sum,
