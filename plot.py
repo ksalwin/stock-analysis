@@ -12,9 +12,6 @@ Features
 
 Usage examples
 --------------
-# Default 2‑D line plot
-./plot.py --type 2d results.csv
-
 # 3‑D scatter plot saved to PNG
 ./plot.py --type 3d -o plot.png results1.csv results2.csv
 
@@ -40,8 +37,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Plot SMA‑grid metrics from files.")
 
     # Positional arguments
+    # Allow one or many files: "nargs='+'" means 1..N files are required.
     parser.add_argument(
-        "input_file", type=Path, help="input file",
+        "input_files",
+        nargs="+",
+        type=Path,
+        help="one or more input CSV files",
     )
 
     # Required arguments
@@ -62,7 +63,6 @@ def parse_args() -> argparse.Namespace:
         help="column to use for Z values (3-D/heatmap/surface)"
     )
 
-    # Optional arguments
     parser.add_argument(
         "--output", type=Path,
         help="optional filename to save the plot instead of displaying it",
@@ -127,48 +127,6 @@ def read_csv(
 # ──────────────────────────────────────────────────────────────────────────────
 # Plot helpers
 # ──────────────────────────────────────────────────────────────────────────────
-
-def plot_2d(
-    x_col: str,
-    x_data: pd.Series,
-    y_col: str,
-    y_data: pd.Series,
-) -> tuple[plt.Figure, plt.Axes]:
-    """
-    Plot a 2D line plot.
-
-    Parameters
-    ----------
-    x_col : str
-        The name of the column to use for the x-axis.
-    x_data : pd.Series
-        The data for the x-axis.
-    y_col : str
-        The name of the column to use for the y-axis.
-    y_data : pd.Series
-        The data for the y-axis.
-
-    Returns
-    -------
-    tuple[plt.Figure, plt.Axes]
-        The Figure and its Axes so the caller can further tweak or save.
-    """
-
-    # Create the figure and axes
-    fig, ax = plt.subplots()
-    # Plot the data
-    ax.plot(x_data, y_data)
-    # Set the labels
-    ax.set_xlabel(x_col)
-    ax.set_ylabel(y_col)
-    # Set the title
-    ax.set_title(f"{x_col} vs {y_col}")
-    # Rotate the x-axis labels
-    plt.xticks(rotation=45, ha="right")
-    # Tighten the layout
-    plt.tight_layout()
-    # Return the figure and axes
-    return fig, ax
 
 def plot_heatmap(
     x_y_col: str,
@@ -311,7 +269,7 @@ def plot_surface(
     ax.set_xlabel(x_col)
     ax.set_ylabel(y_col)
     ax.set_zlabel(z_col)
-    ax.set_title(f"Surface plot of {z_col} vs {x_col} & {y_col}")
+    ax.set_title(f"Surface plot of {z_col}")
     ax.view_init(elev=30, azim=-135)
     fig.colorbar(surf, ax=ax, shrink=0.6, aspect=10, label=z_col)
 
@@ -330,7 +288,7 @@ def plot_data(
     z_data: pd.Series | None,
     plot_type: str,
     output: Path | None = None,
-) -> None:
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Plot the data.
     
@@ -365,7 +323,7 @@ def plot_data(
         fig, ax = plot_3d(x_col, x_data, y_col, y_data, z_col, z_data)
 
     else:
-        fig, ax = plot_heatmap(x_col, x_data, y_col, y_data, z_col, z_data)
+        fig, ax = plot_surface(x_col, x_data, y_col, y_data, z_col, z_data)
 
     # ------------------------------------------------------------------
     # Finally either save the figure to disk or show it interactively.
@@ -375,7 +333,7 @@ def plot_data(
         plt.close(fig)  # Prevent figure leaks in batch workflows.
         print(f"Plot saved to: {output}")
     
-    plt.show()
+    return fig, ax
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Main entry‑point
@@ -384,17 +342,40 @@ def plot_data(
 def main() -> None:
     args = parse_args()
 
-    # Read data from input file
-    x_data, y_data, z_data = read_csv(args.input_file, args.x_col, args.y_col, args.z_col)
+    # For each file: build its plot independently and show/save all.
+    figs: list[plt.Figure] = []
+    for path in args.input_files:
+        x, y, z = read_csv(path, args.x_col, args.y_col, args.z_col)
+        # Decide output path per file when saving multiple:
+        out = None
+        if args.output:
+            # If --output is a directory: filename = <stem>_<type>.png
+            if args.output.is_dir():
+                out = args.output / f"{path.stem}_{args.type}.png"
+            else:
+                # If it's a single file name but we have multiple inputs,
+                # suffix each plot with the file stem.
+                if len(args.input_files) > 1:
+                    out = args.output.with_stem(f"{args.output.stem}_{path.stem}")
+                else:
+                    out = args.output
 
-    # Plot the data
-    plot_data(
-        args.x_col, x_data,
-        args.y_col, y_data,
-        args.z_col, z_data,
-        args.type,
-        args.output
-    )
+        fig, ax = plot_data(
+            args.x_col, x,
+            args.y_col, y,
+            args.z_col, z,
+            args.type,
+            output=out,
+        )
+        if not out:
+            ax.set_title(f"{path.stem} — {args.z_col} vs {args.x_col} & {args.y_col}")  # clarify which file
+            figs.append(fig)
+
+
+    # Show all figures together only if not saving
+    if figs:
+        plt.show()
+
 
 if __name__ == "__main__":
     main()
